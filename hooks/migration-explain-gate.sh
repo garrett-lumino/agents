@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse(Bash): committing a migration that adds an index or a query requires
 # docs/explain/<migration>.txt with real EXPLAIN (ANALYZE) output.
+# Opt-in per repo: active only when the repo has a docs/explain/ directory.
 set -u
 # shellcheck source=hooks/lib.sh
 . "$(dirname "$0")/lib.sh"
@@ -31,6 +32,7 @@ main() {
   cmd=$(json_get '.tool_input.command')
   is_git_commit "$cmd" || exit 0
   root=$(repo_root "$(hook_cwd)")
+  [ -d "$root/docs/explain" ] || exit 0
   while IFS= read -r f; do
     printf '%s' "$f" | grep -Eq "$MIGRATION_PATH" && check_migration "$root" "$f"
   done < <(pending_files "$root" "$cmd" | sort -u)

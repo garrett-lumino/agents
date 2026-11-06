@@ -24,6 +24,7 @@ Rules (enforced by `.go-arch-lint.yml`):
 ```
 app/                    routes and layouts only: thin, call into features
 features/<name>/        components, hooks, server actions, and logic for one feature
+                        (or colocate them in the route folder; pick one per repo and say which here)
 components/ui/          shared primitives (shadcn), no business logic
 lib/                    framework-agnostic clients (db, auth), no feature logic
 ```

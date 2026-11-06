@@ -16,7 +16,7 @@ description: Use when writing or changing SQL, adding indexes or migrations, wri
    - leading-wildcard `LIKE '%x'` on a B-tree.
 6. **Joins.** Name the strategy (nested loop / hash / merge) and check it fits the row counts. Watch for nested loops driven by misestimated outer rows.
 7. **Smaller working set.** Prefer covering (`INCLUDE`) or partial indexes when they shrink it. Confirm index-only scans by checking heap fetches.
-8. **Pagination is keyset**, e.g. `WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT n`. Reject OFFSET on large tables.
+8. **Pagination.** Follow the project's API contract (e.g. `page`/`limit` + `total`). Offset is fine for bounded lists such as admin tables. For large or unbounded tables, feeds, and exports, use keyset pagination, e.g. `WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT n`, because OFFSET scans and discards every skipped row. Always order by a unique tiebreaker. `total` counts get expensive on big tables, so cap them or estimate them.
 9. **No N+1.** Batch with `= ANY($1)` or a join.
 10. **Index creation.** Migrations use `CREATE INDEX CONCURRENTLY`:
     - outside a transaction (goose: `-- +goose NO TRANSACTION`);

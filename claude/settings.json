@@ -13,6 +13,10 @@
         ]
       },
       {
+        "matcher": "mcp__.*(execute_sql|apply_migration|run_sql).*",
+        "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/guard-bash.sh", "timeout": 10 }]
+      },
+      {
         "matcher": "mcp__.*hf_jobs.*",
         "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/ml-launch-gate.sh", "timeout": 10 }]
       }

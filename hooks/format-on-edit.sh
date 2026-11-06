@@ -32,13 +32,35 @@ node_bin() {
 lint_failed() { block "Lint failed for $1 - fix before continuing:
 $(printf '%s\n' "$2" | tail -n 60)"; }
 
+# Opinionated formatters run only where the project opted in, so edits don't
+# reformat untouched legacy lines in repos that use plain gofmt or no ruff.
+golangci_config() {
+  local dir f
+  dir=$(find_up "$1" .golangci.yml .golangci.yaml .golangci.toml .golangci.json) || return 1
+  for f in "$dir"/.golangci.yml "$dir"/.golangci.yaml "$dir"/.golangci.toml "$dir"/.golangci.json; do
+    [ -f "$f" ] && { printf '%s' "$f"; return 0; }
+  done
+  return 1
+}
+
+wants_gofumpt() {
+  local cfg
+  cfg=$(golangci_config "$1") && grep -q gofumpt "$cfg"
+}
+
+wants_ruff() {
+  local dir
+  dir=$(find_up "$1" ruff.toml .ruff.toml pyproject.toml) || return 1
+  [ -f "$dir/ruff.toml" ] || [ -f "$dir/.ruff.toml" ] || grep -q '^\[tool\.ruff' "$dir/pyproject.toml" 2>/dev/null
+}
+
 format_go() {
   local file="$1" dir out rev=()
-  have goimports && goimports -w "$file" >/dev/null 2>&1
-  have gofumpt && gofumpt -w "$file" >/dev/null 2>&1
-  have golangci-lint || return 0
   dir=$(dirname "$file")
-  find_up "$dir" .golangci.yml .golangci.yaml .golangci.toml .golangci.json >/dev/null || return 0
+  have goimports && goimports -w "$file" >/dev/null 2>&1
+  have gofumpt && wants_gofumpt "$dir" && gofumpt -w "$file" >/dev/null 2>&1
+  have golangci-lint || return 0
+  golangci_config "$dir" >/dev/null || return 0
   git -C "$dir" rev-parse --verify -q HEAD >/dev/null 2>&1 && rev=(--new-from-rev=HEAD)
   out=$(cd "$dir" && golangci-lint run "${rev[@]}" --timeout=60s . 2>&1) && return 0
   toolchain_broken "$out" && return 0
@@ -66,13 +88,24 @@ format_js() {
 
 format_py() {
   local file="$1" out
-  have ruff || return 0
+  have ruff && wants_ruff "$(dirname "$file")" || return 0
   ruff format -q "$file" >/dev/null 2>&1
   out=$(ruff check --fix -q "$file" 2>&1) || lint_failed "$file" "$out"
 }
 
 format_tf() {
   have terraform && terraform fmt "$1" >/dev/null 2>&1
+  return 0
+}
+
+# rustfmt on the file with the crate's edition. clippy needs a crate build, which is
+# too slow per edit; it belongs in the project's `make check` / `cargo lint`.
+format_rs() {
+  local file="$1" crate edition
+  have rustfmt || return 0
+  crate=$(find_up "$(dirname "$file")" Cargo.toml) || return 0
+  edition=$(sed -nE 's/^edition[[:space:]]*=[[:space:]]*"([0-9]+)".*/\1/p' "$crate/Cargo.toml" | head -1)
+  rustfmt --edition "${edition:-2021}" "$file" >/dev/null 2>&1
   return 0
 }
 
@@ -86,6 +119,7 @@ main() {
     *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs) format_js "$file" ;;
     *.py) format_py "$file" ;;
     *.tf | *.tfvars) format_tf "$file" ;;
+    *.rs) format_rs "$file" ;;
   esac
   exit 0
 }

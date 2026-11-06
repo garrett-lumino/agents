@@ -6,7 +6,11 @@ description: Use when code handles money, prices, FX, percentages, interest, fee
 # Numeric correctness
 
 ## Money
-1. **Never `float64`/`number`.** Use integer minor units (`int64`) plus an ISO-4217 currency code, or a decimal type (`shopspring/decimal`, Python `Decimal`, a TS decimal library). The money-float-guard hook flags violations.
+1. **Integer minor units (cents), never float dollars.**
+   - Go: `int64` cents plus an ISO-4217 currency code (or `shopspring/decimal` for rates).
+   - Python: `int` cents or `Decimal`.
+   - TS: an integer-cents `number` is correct (exact up to 2⁵³). A branded `type Cents = number & { readonly __brand: "Cents" }` stops dollar floats from being passed where cents are expected. Use `bigint` beyond 2⁵³.
+   - The money-float-guard hook flags float money types in Go and Python. In TS it flags `parseFloat` and cents↔dollars `/100` and `*100` in logic.
 2. **Currency exponents vary** (JPY has 0, KWD has 3). Look them up; never hard-code 2.
 3. **Rounding.** State the mode (half-even or half-up) and where it happens. Round once, at a defined boundary, through one helper.
 4. **Splitting and allocation.** Distribute remainders deterministically so the parts always sum to the total.

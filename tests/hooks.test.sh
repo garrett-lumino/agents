@@ -44,8 +44,33 @@ test_guard_reset() {
   local repo
   repo=$(new_repo reset)
   blocked 'git reset --hard HEAD~1' "$repo"
+  git -C "$repo" checkout -q -b develop
+  blocked 'git reset --hard origin/develop' "$repo"
   git -C "$repo" checkout -q -b feature
   allowed 'git reset --hard HEAD~1' "$repo"
+}
+
+test_guard_protected_push() {
+  local repo
+  repo=$(new_repo push)
+  blocked 'git push' "$repo"                     # on main
+  blocked 'git push origin main' "$repo"
+  blocked 'git push origin HEAD' "$repo"         # HEAD is main
+  allowed 'git push origin --tags' "$repo"
+  git -C "$repo" checkout -q -b feat/ln-1-x
+  allowed 'git push -u origin feat/ln-1-x' "$repo"
+  allowed 'git push' "$repo"
+  allowed 'git push origin HEAD' "$repo"
+  blocked 'git push origin feat/ln-1-x:develop' "$repo"
+  blocked 'git push origin HEAD:refs/heads/master' "$repo"
+}
+
+sql_tool_json() { jq -nc --arg q "$1" '{tool_name:"mcp__claude_ai_Supabase__execute_sql",tool_input:{project_id:"p",query:$q}}'; }
+
+test_guard_sql_mcp() {
+  expect 2 "mcp sql: DROP TABLE" guard-bash.sh "$(sql_tool_json 'DROP TABLE merchants;')"
+  expect 2 "mcp sql: DELETE FROM" guard-bash.sh "$(sql_tool_json 'delete from ledger_entries where id = 1')"
+  expect 0 "mcp sql: SELECT" guard-bash.sh "$(sql_tool_json 'select id from merchants limit 5')"
 }
 
 test_guard_aws() {
@@ -81,11 +106,44 @@ test_format_on_edit() {
   expect 0 "format: no file_path" format-on-edit.sh '{"tool_input":{}}'
 }
 
+# Stub formatters that record they ran; proves opt-in behaviour without real tools.
+stub_formatters() {
+  local bin="$TMP/stubs" t
+  mkdir -p "$bin"
+  for t in gofumpt ruff; do
+    printf '#!/bin/sh\ntouch "%s/ran-%s"\n' "$TMP" "$t" >"$bin/$t" && chmod +x "$bin/$t"
+  done
+  ln -sf "$(command -v jq)" "$bin/jq"
+  printf '%s' "$bin:/usr/bin:/bin"
+}
+
+ran() { [ -e "$TMP/ran-$1" ]; }
+
+test_format_opt_in() {
+  local path p="$TMP/optin"
+  path=$(stub_formatters)
+  mkdir -p "$p/go" "$p/py"
+  printf 'package x\n' >"$p/go/x.go" && printf 'x = 1\n' >"$p/py/x.py"
+  expect 0 "format: go edit, no golangci config" format-on-edit.sh "$(edit_json "$p/go/x.go")" "$path"
+  check "format: gofumpt skipped without opt-in" eval '! ran gofumpt'
+  printf 'formatters:\n  enable: [gofumpt]\n' >"$p/go/.golangci.yml"
+  expect 0 "format: go edit, gofumpt enabled" format-on-edit.sh "$(edit_json "$p/go/x.go")" "$path"
+  check "format: gofumpt runs when .golangci.yml enables it" ran gofumpt
+  expect 0 "format: py edit, no ruff config" format-on-edit.sh "$(edit_json "$p/py/x.py")" "$path"
+  check "format: ruff skipped without opt-in" eval '! ran ruff'
+  printf '[tool.ruff]\nline-length = 100\n' >"$p/py/pyproject.toml"
+  expect 0 "format: py edit, ruff configured" format-on-edit.sh "$(edit_json "$p/py/x.py")" "$path"
+  check "format: ruff runs when pyproject has [tool.ruff]" ran ruff
+}
+
 test_guard_rm
 test_guard_sql
 test_guard_terraform_git
 test_guard_reset
+test_guard_protected_push
+test_guard_sql_mcp
 test_guard_aws
 test_stop_gate
 test_format_on_edit
+test_format_opt_in
 finish

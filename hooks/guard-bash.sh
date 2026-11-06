@@ -60,16 +60,58 @@ check_rm() {
   return 0
 }
 
+is_protected_branch() {
+  case "$1" in main | master | develop) return 0 ;; esac
+  return 1
+}
+
+current_branch() { git -C "${1:-.}" symbolic-ref --short HEAD 2>/dev/null; }
+
+# Branch a push refspec lands on: "+HEAD:refs/heads/main" -> main, "HEAD" -> current.
+push_dest() {
+  local ref="${1#+}" cwd="$2"
+  ref="${ref##*:}"
+  ref="${ref#refs/heads/}"
+  [ "$ref" = HEAD ] && ref=$(current_branch "$cwd")
+  printf '%s' "$ref"
+}
+
+# Direct pushes to main/master/develop go through a PR instead.
+check_push_target() {
+  local seg="$1" cwd="$2" words w seen=0 pos=0 tags=0 dest
+  set -f
+  read -r -a words <<<"$seg"
+  set +f
+  for w in "${words[@]}"; do
+    [ "$seen" = 1 ] || { [ "$w" = push ] && seen=1; continue; }
+    case "$w" in
+      --tags) tags=1 ;;
+      -*) ;;
+      *)
+        pos=$((pos + 1))
+        [ "$pos" -ge 2 ] || continue # first positional is the remote
+        dest=$(push_dest "$w" "$cwd")
+        is_protected_branch "$dest" && deny "direct push to $dest (open a PR)" "$seg"
+        ;;
+    esac
+  done
+  [ "$pos" -ge 2 ] || [ "$tags" = 1 ] && return 0
+  dest=$(current_branch "$cwd")
+  is_protected_branch "$dest" && deny "direct push to $dest (open a PR)" "$seg"
+  return 0
+}
+
 check_git() {
   local seg="$1" cwd="$2" branch
   printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' || return 0
-  if printf '%s' "$seg" | grep -Eq '[[:space:]]push([[:space:]]|$)' &&
-    printf '%s' "$seg" | grep -Eq '[[:space:]](--force[^[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*)([[:space:]]|$)'; then
-    deny "force push" "$seg"
+  if printf '%s' "$seg" | grep -Eq '[[:space:]]push([[:space:]]|$)'; then
+    printf '%s' "$seg" | grep -Eq '[[:space:]](--force[^[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*)([[:space:]]|$)' &&
+      deny "force push" "$seg"
+    check_push_target "$seg" "$cwd"
   fi
   printf '%s' "$seg" | grep -Eq '[[:space:]]reset[[:space:]].*--hard|--hard.*[[:space:]]reset([[:space:]]|$)' || return 0
-  branch=$(git -C "${cwd:-.}" symbolic-ref --short HEAD 2>/dev/null)
-  case "$branch" in main | master) deny "git reset --hard on $branch" "$seg" ;; esac
+  branch=$(current_branch "$cwd")
+  is_protected_branch "$branch" && deny "git reset --hard on $branch" "$seg"
   return 0
 }
 
@@ -130,7 +172,8 @@ check_aws() {
 main() {
   local cmd cwd seg
   read_input
-  cmd=$(json_get '.tool_input.command')
+  # Bash passes .command; SQL MCP tools (execute_sql, apply_migration) pass .query.
+  cmd=$(json_get '.tool_input.command // .tool_input.query // .tool_input.sql')
   cwd=$(json_get '.cwd')
   [ -n "$cmd" ] || exit 0
   check_sql "$cmd"

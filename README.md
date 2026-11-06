@@ -134,12 +134,13 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
 - **guard-bash.sh** blocks:
   - recursive `rm` on `/`, a top-level directory, `~` or `$HOME`
   - any force push, including `--force-with-lease`
-  - `git reset --hard` on `main` or `master`
+  - direct pushes to `main`, `master` or `develop` (push a branch and open a PR)
+  - `git reset --hard` on `main`, `master` or `develop`
   - `terraform`/`tofu`/`terragrunt` `apply` and `destroy`
   - SQL `DROP <object>`, `TRUNCATE` and `DELETE FROM`
   - `aws` write commands when the profile contains "prod"
 
-  It can't see SQL inside a file passed with `psql -f`.
+  The same SQL check also runs on MCP SQL tools (`execute_sql`, `apply_migration`, `run_sql`, e.g. Supabase). It can't see SQL inside a file passed with `psql -f`.
 - **supply-chain-guard.sh** blocks:
   - `hf repo create` without `--private`
   - `git+` installs not pinned to a 40-char SHA
@@ -147,17 +148,23 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
   - committing `.env*` (except `.env.example`), weights (`*.safetensors`, `*.gguf`, `*.bin`, `*.pt`, …), `adapters/` or `data/raw/`
 - **ml-launch-gate.sh** blocks paid GPU launches until `.ml/cost-estimate.json` exists. The estimate must be under 24h old with `est_usd ≤ max_usd` and a timeout. Launches and `hf upload` also need `.ml/data-attestation.json` with `pan_hits: 0`. It covers `hf jobs`, the HF MCP `hf_jobs` tool, `modal run/deploy`, `runpodctl create`, `together fine-tuning create`, `sky launch` and Lambda launch calls.
 - **perf-commit-gate.sh**: a commit whose message says perf, optimize, faster or speed up needs benchstat output, either in the message or in a staged `perf/*.txt`.
-- **migration-explain-gate.sh**: committing a migration with `CREATE INDEX`, `SELECT` or `JOIN` needs `docs/explain/<migration>.txt` containing EXPLAIN ANALYZE output.
+- **migration-explain-gate.sh**: committing a migration with `CREATE INDEX`, `SELECT` or `JOIN` needs `docs/explain/<migration>.txt` containing EXPLAIN ANALYZE output. **Opt-in:** it only applies in repos that have a `docs/explain/` directory (the service template creates one).
 - **bench-count-guard.sh**: `go test -bench` output saved to a file needs `-count` of at least 6.
 
 **PostToolUse (Edit|Write|MultiEdit):**
 - **format-on-edit.sh** formats only the edited file:
-  - Go: goimports and gofumpt, then golangci-lint on that package (`--new-from-rev=HEAD`) if a `.golangci.yml` exists in that directory or above. A Go toolchain mismatch warns instead of blocking.
-  - JS/TS: prettier (if the project uses it), then eslint `--max-warnings=0`.
-  - Python: ruff format and check.
+  - Go: goimports always. gofumpt only if the project's `.golangci.yml` enables it. golangci-lint on that package (`--new-from-rev=HEAD`) only if a `.golangci.yml` exists. A Go toolchain mismatch warns instead of blocking.
+  - JS/TS: prettier (if the project uses it), then eslint `--max-warnings=0` (if it has an eslint config).
+  - Python: ruff format and check, only if the project configures ruff (`ruff.toml` or `[tool.ruff]`).
+  - Rust: rustfmt with the crate's edition. clippy builds the crate, so it belongs in the project's checks, not in an edit hook.
   - Terraform: `terraform fmt`.
+
+  The opt-in rules mean edits don't reformat untouched legacy code in repos that use plain gofmt or no ruff.
 - **guard-write.sh**: `trust_remote_code=True` in code or config, and Luhn-valid card numbers written under `data/`, `evals/`, `*.jsonl` or `*.csv`.
-- **money-float-guard.sh**: float types on money-named identifiers (amount, price, fee, balance, cents, …) in Go, TS and Python. Override with a `lint:allow-float` comment.
+- **money-float-guard.sh**: money must be integer minor units (cents).
+  - Go and Python: flags float types on money-named identifiers (amount, price, fee, balance, cents, …).
+  - TS: `number` is correct for integer cents, so it flags float money being *created* instead: `parseFloat`, and `/ 100` or `* 100` conversions in logic. Display lines (`.format(`, `toLocaleString`, `toFixed`) are allowed.
+  - Override with a `lint:allow-float` comment.
 - **nolint-justification.sh**: `//nolint`, `# noqa` and `eslint-disable` must name the rule and give a reason.
 - **index-concurrently-guard.sh**: in migration files, `CREATE INDEX` without `CONCURRENTLY`, or `ADD COLUMN` with a volatile default. Override with `-- lint:allow-blocking <reason>`.
 

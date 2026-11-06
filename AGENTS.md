@@ -1,6 +1,6 @@
 # Global Engineering Rules
 
-These rules apply to every project. A project's own `AGENTS.md` adds its layer map and may tighten them.
+These rules apply to every project. A project's own `AGENTS.md` adds its layer map and may tighten them. Where a project's stated convention differs, follow the project.
 
 ## Size & simplicity
 - Write the minimum code that solves the stated problem. No speculative features, flags, config, or abstractions.
@@ -11,31 +11,36 @@ These rules apply to every project. A project's own `AGENTS.md` adds its layer m
 
 ## Single responsibility
 - One reason to change per function, type, and package.
-- Name packages for what they provide. Never `util`, `common`, `helpers`, `misc`, or `shared`.
+- Go: name packages for what they provide, never `util`, `common`, `helpers`, `misc`. Elsewhere, follow the framework's convention (e.g. NestJS `common/`).
 - Keep interfaces small and declare them where they are consumed, not where they are implemented.
-- No boolean-flag parameters that switch behavior. Write two functions instead.
+- No positional boolean flags that switch behavior. Split the function, or use an options object.
+- Names describe what a thing is, not who calls it (`getUser`, not `getUserForCheckout`). No package/type stutter. Public signatures use named types.
 
 ## Boundaries
 - Dependencies point inward. Domain code never imports adapters, frameworks, or I/O.
 - Each project's `AGENTS.md` defines its layer map. Follow it, and if a change needs to cross it, ask first.
 - Wiring (constructors, DI, config loading) lives at the edge: `cmd/`, `main`, or route handlers.
+- Tunables live in one validated config loaded at startup. No env reads in business logic.
+- Ask before adding a dependency, or changing a public API, serialization format, DB schema, or route.
 
 ## Payments & sensitive data
-- Never use floats for money. Use integer minor units or a decimal type.
+- Money is integer minor units (cents) plus a currency, never float dollars. Convert to dollars only in one display formatter.
 - Every mutating handler takes an idempotency key.
-- Never log PAN, CVV, secrets, tokens, or full request bodies that may contain them.
+- Never log PAN, CVV, secrets, tokens, PII (email, name, phone, IP), or full request bodies that may contain them. Log IDs or a salted hash.
 
 ## Workflow
 - Plan before touching more than one file: list the files and what changes in each.
 - Red-green-refactor: write a failing test, make it pass, then simplify.
-- "Done" means `make check` passes *and* you have done a simplify pass over your diff.
+- "Done" means the project's checks pass (`make check` where it exists) *and* you have done a simplify pass over your diff.
 - Make surgical changes: touch only what the task needs, and remove anything your change orphaned (imports, helpers, files, flags).
 - Don't reformat or refactor unrelated code in the same change.
+- Never weaken or delete an assertion to get green. Assert persisted state, not just responses. Test names claim only what they assert.
+- Before moving untested code, add characterization tests. Don't delete code you can't prove is dead (reflection, DI, codegen, routes).
 
 ## Dangerous operations
-- Destructive DB operations (DROP, TRUNCATE, DELETE): never run them. Show me the SQL and let me decide.
+- Destructive DB operations (DROP, TRUNCATE, DELETE): never run them, via shell or MCP. Show me the SQL and let me decide.
 - Never run `terraform apply` or `terraform destroy`. Run `plan` and show me the output.
-- No force pushes, no `git reset --hard` on main, and no AWS writes against prod profiles.
+- No force pushes, no direct pushes or `git reset --hard` on main/master/develop, and no AWS writes against prod profiles.
 
 ## Measure & verify
 - State n and the Big-O budget before choosing a data structure (skill: algorithm-choice).
@@ -52,7 +57,8 @@ These rules apply to every project. A project's own `AGENTS.md` adds its layer m
 
 ## Language notes
 - Go: wrap errors with context (`fmt.Errorf("doing x: %w", err)`); accept `context.Context` first; no package-level mutable state.
-- TypeScript/Next.js: keep `app/` routes thin and put logic in `features/<name>/`; no `any`; server components by default.
-- Python: type hints on public functions; `ruff` clean.
+- TypeScript/Next.js: keep `app/` routes thin (follow the project's layout: feature folders or route colocation); no `any`; server components by default; only `NEXT_PUBLIC_*` reaches the browser; preserve `use client`/`use server` boundaries.
+- Python: type hints on public functions; follow the project's formatter and linter.
+- Rust: `thiserror` in libraries, `anyhow` in binaries; no `unwrap`/`expect` in library code; `cargo fmt` and `cargo clippy -- -D warnings` clean.
 - Terraform: one module, one responsibility; no provider blocks in child modules.
-- PostgreSQL: migrations are forward-only and reviewed; every query on a hot path has an index plan.
+- PostgreSQL: migrations are reviewed; in production, fix forward (keep `down()` if the project requires it). Every hot-path query has an index plan.

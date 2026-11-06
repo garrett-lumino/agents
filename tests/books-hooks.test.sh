@@ -22,6 +22,11 @@ geomean  1.2ms  0.8ms  -33.0% (p=0.000 n=10)"' "$repo"
 
 test_migration_explain_gate() {
   local repo
+  repo=$(new_repo mig-optout)
+  mkdir -p "$repo/db/migrations"
+  printf 'CREATE INDEX idx_a ON t (a);\n' >"$repo/db/migrations/0001_a.up.sql"
+  git -C "$repo" add db/migrations
+  bash_case 0 migration-explain-gate.sh 'git commit -m "repo without docs/explain is not opted in"' "$repo"
   repo=$(new_repo mig)
   mkdir -p "$repo/db/migrations" "$repo/docs/explain"
   printf 'CREATE INDEX CONCURRENTLY idx_tx_created ON tx (created_at);\n' >"$repo/db/migrations/0002_idx.up.sql"
@@ -56,14 +61,24 @@ test_index_concurrently_guard() {
   expect 0 "index: not a migration" index-concurrently-guard.sh "$(edit_json "$TMP/app/notes.sql")"
 }
 
+# shellcheck disable=SC2016  # literal TS template strings fed to the hook
 test_money_float_guard() {
   write_case 2 money-float-guard.sh x.go 'type Charge struct { Amount float64 }'
   write_case 2 money-float-guard.sh x.go 'var totalPrice float32'
   write_case 0 money-float-guard.sh x.go 'type Charge struct { AmountMinor int64 }'
   write_case 0 money-float-guard.sh x.go 'var feedRate float64'
   write_case 0 money-float-guard.sh x.go 'var latencyMs float64'
-  write_case 2 money-float-guard.sh x.ts 'interface Order { price: number }'
-  write_case 0 money-float-guard.sh x.ts 'interface Order { priceMinor: bigint }'
+  write_case 0 money-float-guard.sh x.ts 'interface Order { amount: number }' # integer cents
+  write_case 0 money-float-guard.sh x.ts 'readonly amountMinorUnits: number;'
+  write_case 0 money-float-guard.sh x.ts 'const totalCents = priceCents * quantity'
+  write_case 2 money-float-guard.sh x.ts 'const dollars = amountCents / 100'
+  write_case 2 money-float-guard.sh x.ts 'const price = parseFloat(priceInput)'
+  write_case 2 money-float-guard.sh x.ts 'const rounded = Math.round(price * 100) / 100'
+  write_case 2 money-float-guard.sh x.ts 'const cents = 100 * amount'
+  write_case 0 money-float-guard.sh x.ts 'return `$${(amountCents / 100).toFixed(2)}` // lint:allow-float display only'
+  write_case 0 money-float-guard.sh x.ts 'const pct = ratio * 100'
+  write_case 0 money-float-guard.sh x.tsx '}).format(amountMinorUnits / 100)}'
+  write_case 2 money-float-guard.sh x.ts 'const fee = Math.round(amount * 100)'
   write_case 2 money-float-guard.sh x.py 'def f(unit_price: float) -> None: ...'
   write_case 0 money-float-guard.sh x.py 'ratio: float = 0.5'
   write_case 0 money-float-guard.sh x.go 'Amount float64 // lint:allow-float: chart scale'

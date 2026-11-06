@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Data: only small, scrubbed, frozen eval sets are committed
+data/raw/
+data/processed/
+data/overfit/
+
+# Weights, adapters, checkpoints, exports
+adapters/
+models/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.npz
+
+# Run outputs and tooling
+runs/
+mlruns/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,19 @@
+# go-arch-lint v3: cmd → internal/<domain> → internal/adapters/*
+# When globs overlap, the narrowest match wins, so internal/adapters/** beats internal/*.
+version: 3
+workdir: .
+allow:
+  depOnAnyVendor: true
+
+components:
+  cmd:      { in: cmd/** }
+  domain:   { in: internal/* }
+  adapters: { in: internal/adapters/** }
+
+deps:
+  cmd:
+    anyProjectDeps: true
+  adapters:
+    mayDependOn: [domain]
+  domain:
+    mayDependOn: [domain]

@@ -1,0 +1,165 @@
+# agents
+
+My global agent config for Claude Code and Hermes Agent: rules, hooks, plugins, and vendored skills. It is installed into `~/.claude`, so it applies to every project.
+
+Per-project config (boundary maps, linter configs) does **not** live here. Copy it from `templates/` instead.
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `AGENTS.md` | Global engineering rules. `~/.claude/CLAUDE.md` symlinks here. |
+| `claude/settings.json` | Hooks, `enabledPlugins` and `extraKnownMarketplaces`, merged into `~/.claude/settings.json`. |
+| `hooks/` | One job per script; see [What the hooks enforce](#what-the-hooks-enforce). `lib.sh` holds the shared helpers, and `pan-scan.sh` is also usable on its own. |
+| `skills/` | 13 self-written skills plus 20 vendored at pinned SHAs. `SOURCES.md` records provenance, review notes, local patches, and rejections. |
+| `templates/project/` | Go/TS service starter: `AGENTS.md`, `CLAUDE.md`, `.golangci.yml`, `.go-arch-lint.yml`, `Makefile` (check, bench, escape, explain), `docs/explain/`. |
+| `templates/ml-project/` | uv Python ML starter: `pyproject.toml`, `Makefile`, `evals/`, `.ml/` gate docs, `.gitignore`, `AGENTS.md`. |
+| `hermes/config.snippet.yaml` | Points Hermes at the shared skills and the MLflow MCP server. |
+| `scripts/` | `install.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
+| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `ml-hooks` and `skills` suites. |
+
+Requires `bash`, `jq` and `git`. Formatters and linters (goimports, gofumpt, golangci-lint, prettier, eslint, ruff, terraform) are optional: hooks skip any that aren't installed. The ML launch gate is the exception: without `jq` it fails closed.
+
+## Install / update
+
+```sh
+scripts/install.sh
+```
+
+`install.sh` is safe to run any number of times. It:
+1. On the first run only, backs up `~/.claude/{CLAUDE.md,settings.json,skills}` to `~/.claude/backup-<timestamp>/`. The marker file `~/.claude/.agents-backup` records where.
+2. Links `~/agents` to this repo, if the repo lives somewhere else.
+3. Links `~/.claude/CLAUDE.md` to `~/agents/AGENTS.md`.
+4. Links each `skills/<name>` into `~/.claude/skills/<name>`. It prunes our links whose skill was removed or renamed, and leaves other skills alone.
+5. Merges `claude/settings.json` into `~/.claude/settings.json`:
+   - hook groups whose command is under `/agents/hooks/` are replaced;
+   - `enabledPlugins` and `extraKnownMarketplaces` are added to;
+   - every other key stays as it is.
+6. Makes skill folders read-only (`scripts/lock-skills.sh lock`). Hermes can patch skills in place, and this stops it rewriting reviewed ones.
+
+`settings.json` is merged, not symlinked, so **re-run `scripts/install.sh` after editing `claude/settings.json`**. Edits to `AGENTS.md` and hooks take effect immediately, because those are symlinked.
+
+Skills are locked, so **unlock before editing them or running `git pull`**:
+```sh
+scripts/lock-skills.sh unlock && git pull && scripts/lock-skills.sh lock
+```
+
+Before committing, run `make check` (shellcheck plus every test suite).
+
+## Plugins
+
+`claude/settings.json` enables these. Fetch them once by hand:
+
+```
+/plugin install superpowers@claude-plugins-official
+/plugin install code-simplifier@claude-plugins-official
+/plugin install hookify@claude-plugins-official
+/plugin install security-guidance@claude-plugins-official
+/plugin install playwright@claude-plugins-official
+/plugin install typescript-lsp@claude-plugins-official
+
+/plugin marketplace add multica-ai/andrej-karpathy-skills
+/plugin install andrej-karpathy-skills@karpathy-skills
+
+/plugin marketplace add huggingface/skills
+/plugin install hf-cli@huggingface-skills
+```
+
+All IDs were checked against each repo's `.claude-plugin/marketplace.json` on 2026-11-06. Three plugins are **disabled on purpose** (`false` in settings):
+
+| Plugin | Why it's off |
+|---|---|
+| `cc-skills-golang@samber` | All 46 of its skills pre-approve `Bash(go:*)` and `Bash(git:*)`. Five are vendored here with that pre-approval stripped. |
+| `terraform@hashicorp` | 16 skills; 3 are vendored here instead (style guide, test, refactor-module). |
+| `posthog@posthog` | 170 skills. Enable it only in projects that use PostHog, via that repo's `.claude/settings.json`: `{"enabledPlugins": {"posthog@posthog": true}}` |
+
+## MCP servers (run by hand)
+
+User-scope MCP servers live in `~/.claude.json`, not in settings.json:
+```sh
+# Hugging Face Hub + Jobs (OAuth login). hf_jobs calls are gated by ml-launch-gate.
+claude mcp add -s user -t http hf-mcp-server "https://huggingface.co/mcp?login"
+# MLflow run tracking (start the server with: uv run --with mlflow==3.18.0 mlflow server --port 5000)
+claude mcp add -s user mlflow-mcp -e MLFLOW_TRACKING_URI=http://localhost:5000 -- uv run --with "mlflow[mcp]==3.18.0" mlflow mcp run
+```
+
+These were deliberately left out:
+- **W&B:** read-only mode couldn't be confirmed for the hosted endpoint.
+- **postgres-mcp:** its last release is stale. Use `make explain` with a read-only role instead.
+- **shadcn MCP:** add it per frontend repo only, with `npx shadcn@latest mcp init --client claude`.
+
+## Adding a skill
+
+1. Find the repo, the skill's directory, and a commit SHA. Use the full 40-character SHA; branch names are refused.
+2. `scripts/vendor-skill.sh <owner/repo> <sha> <path/to/skill> [name]`. It copies the repo LICENSE in if the folder has none.
+3. Review it:
+   - read every file the script lists as non-markdown;
+   - check `SKILL.md` for shell, `npx`, `curl`, WebFetch, `allowed-tools`, and branch-pinned URLs;
+   - replace the `TODO: review` cell in `skills/SOURCES.md` with your notes, and record any local patch.
+4. If it auto-runs commands, pre-approves tools, fetches instructions at runtime, downloads binaries, or writes outside the project, then patch it or drop it: `rm -rf skills/<name>` and remove its row.
+5. Run `make check`. `tests/skills.test.sh` validates the frontmatter.
+6. Run `scripts/install.sh` to link and lock it.
+
+## New project
+
+```sh
+scripts/new-project.sh /path/to/repo        # Go/TS service template
+scripts/new-project.sh --ml /path/to/repo   # ML project template
+```
+Neither command overwrites existing files. Afterwards:
+- fill in the project `AGENTS.md`;
+- service repos: replace `OWNER/REPO` in `.golangci.yml`;
+- ML repos: create `evals/test_set.jsonl` and run `shasum -a 256 evals/test_set.jsonl > evals/test_set.sha256`.
+
+Tools the templates expect:
+- benchstat: `go install golang.org/x/perf/cmd/benchstat@latest`, then pin the version you get.
+- psql, for `make explain`.
+- uv, for ML projects.
+
+## Hermes Agent
+
+1. Merge `hermes/config.snippet.yaml` into `~/.hermes/config.yaml`. It sets `skills.external_dirs: [~/agents/skills]` and adds the MLflow MCP server.
+2. `import-agent` now ships as a plugin: `hermes plugins install agent-importers`.
+3. `hermes import-agent claude-code`. This imports the **whole** hooks block of `~/.claude/settings.json`, including hooks that didn't come from this repo.
+4. `hermes hooks list` to review the imported hooks and approve them. Imported hooks start out not allowlisted. `hermes hooks doctor` checks them.
+5. After changing hooks: `hermes import-agent claude-code --sync`.
+
+Hermes reads `AGENTS.md` only from the current working directory, so the global `AGENTS.md` doesn't apply there. Keep a project `AGENTS.md` in each repo.
+
+## What the hooks enforce
+
+All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo an edit, so their message tells the agent what to fix.
+
+**PreToolUse (Bash):**
+- **guard-bash.sh** blocks:
+  - recursive `rm` on `/`, a top-level directory, `~` or `$HOME`
+  - any force push, including `--force-with-lease`
+  - `git reset --hard` on `main` or `master`
+  - `terraform`/`tofu`/`terragrunt` `apply` and `destroy`
+  - SQL `DROP <object>`, `TRUNCATE` and `DELETE FROM`
+  - `aws` write commands when the profile contains "prod"
+
+  It can't see SQL inside a file passed with `psql -f`.
+- **supply-chain-guard.sh** blocks:
+  - `hf repo create` without `--private`
+  - `git+` installs not pinned to a 40-char SHA
+  - `--trust-remote-code`
+  - committing `.env*` (except `.env.example`), weights (`*.safetensors`, `*.gguf`, `*.bin`, `*.pt`, …), `adapters/` or `data/raw/`
+- **ml-launch-gate.sh** blocks paid GPU launches until `.ml/cost-estimate.json` exists. The estimate must be under 24h old with `est_usd ≤ max_usd` and a timeout. Launches and `hf upload` also need `.ml/data-attestation.json` with `pan_hits: 0`. It covers `hf jobs`, the HF MCP `hf_jobs` tool, `modal run/deploy`, `runpodctl create`, `together fine-tuning create`, `sky launch` and Lambda launch calls.
+- **perf-commit-gate.sh**: a commit whose message says perf, optimize, faster or speed up needs benchstat output, either in the message or in a staged `perf/*.txt`.
+- **migration-explain-gate.sh**: committing a migration with `CREATE INDEX`, `SELECT` or `JOIN` needs `docs/explain/<migration>.txt` containing EXPLAIN ANALYZE output.
+- **bench-count-guard.sh**: `go test -bench` output saved to a file needs `-count` of at least 6.
+
+**PostToolUse (Edit|Write|MultiEdit):**
+- **format-on-edit.sh** formats only the edited file:
+  - Go: goimports and gofumpt, then golangci-lint on that package (`--new-from-rev=HEAD`) if a `.golangci.yml` exists in that directory or above. A Go toolchain mismatch warns instead of blocking.
+  - JS/TS: prettier (if the project uses it), then eslint `--max-warnings=0`.
+  - Python: ruff format and check.
+  - Terraform: `terraform fmt`.
+- **guard-write.sh**: `trust_remote_code=True` in code or config, and Luhn-valid card numbers written under `data/`, `evals/`, `*.jsonl` or `*.csv`.
+- **money-float-guard.sh**: float types on money-named identifiers (amount, price, fee, balance, cents, …) in Go, TS and Python. Override with a `lint:allow-float` comment.
+- **nolint-justification.sh**: `//nolint`, `# noqa` and `eslint-disable` must name the rule and give a reason.
+- **index-concurrently-guard.sh**: in migration files, `CREATE INDEX` without `CONCURRENTLY`, or `ADD COLUMN` with a volatile default. Override with `-- lint:allow-blocking <reason>`.
+
+**Stop:**
+- **stop-gate.sh** runs `make check` if the repo's Makefile has a `check` target, and blocks the stop when it fails. It skips when `stop_hook_active` is true.

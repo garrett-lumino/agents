@@ -1,0 +1,46 @@
+# golangci-lint v2 config: size, complexity and package-naming limits from AGENTS.md.
+version: "2"
+
+linters:
+  enable:
+    - funlen
+    - gocognit
+    - nestif
+    - interfacebloat
+    - depguard
+    - errorlint
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    funlen:
+      lines: 40
+      statements: -1
+    gocognit:
+      min-complexity: 15
+    nestif:
+      min-complexity: 4
+    interfacebloat:
+      max: 5
+    depguard:
+      rules:
+        no-junk-drawers:
+          files: ["$all"]
+          deny:
+            - pkg: "github.com/OWNER/REPO/internal/util"
+              desc: "no util packages: name packages for what they provide"
+            - pkg: "github.com/OWNER/REPO/internal/common"
+              desc: "no common packages: name packages for what they provide"
+            - pkg: "github.com/OWNER/REPO/internal/helpers"
+              desc: "no helpers packages: name packages for what they provide"
+  exclusions:
+    presets: [comments, std-error-handling]
+    rules:
+      - path: _test\.go
+        linters: [funlen, gocognit]
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

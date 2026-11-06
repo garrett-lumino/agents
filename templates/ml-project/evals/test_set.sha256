@@ -1,0 +1,1 @@
+REPLACE_ME  run: shasum -a 256 evals/test_set.jsonl > evals/test_set.sha256

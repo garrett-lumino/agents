@@ -1,0 +1,55 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "$HOME/agents/hooks/guard-bash.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/supply-chain-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/ml-launch-gate.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/perf-commit-gate.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/migration-explain-gate.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/bench-count-guard.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "mcp__.*hf_jobs.*",
+        "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/ml-launch-gate.sh", "timeout": 10 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "$HOME/agents/hooks/format-on-edit.sh", "timeout": 120 },
+          { "type": "command", "command": "$HOME/agents/hooks/guard-write.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/money-float-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/nolint-justification.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/index-concurrently-guard.sh", "timeout": 10 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/stop-gate.sh", "timeout": 900 }]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true,
+    "hf-cli@huggingface-skills": true,
+    "cc-skills-golang@samber": false,
+    "terraform@hashicorp": false,
+    "posthog@posthog": false
+  },
+  "extraKnownMarketplaces": {
+    "karpathy-skills": { "source": { "source": "github", "repo": "multica-ai/andrej-karpathy-skills" } },
+    "huggingface-skills": { "source": { "source": "github", "repo": "huggingface/skills" } }
+  }
+}

@@ -1,0 +1,30 @@
+[project]
+name = "ml-project"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+# Heavy training deps live in an extra so `make check` stays fast:
+#   uv sync --extra train
+[project.optional-dependencies]
+train = [
+  "mlx-lm==0.32.2; sys_platform == 'darwin'",
+  "mlx-lm-lora==5.10.2; sys_platform == 'darwin'",
+  "lightgbm",
+  "scikit-learn",
+  "mlflow==3.18.0",
+]
+
+[dependency-groups]
+dev = ["ruff", "pytest"]
+
+# Marks this repo as an ML project for agents and tooling.
+[tool.ml]
+test_set = "evals/test_set.jsonl"
+test_set_hash = "evals/test_set.sha256"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

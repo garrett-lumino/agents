@@ -1,0 +1,18 @@
+# Merge into ~/.hermes/config.yaml (don't replace it).
+#
+# External dirs are NOT a write-protection boundary: Hermes' skill_manage can
+# patch skills in place wherever they live. scripts/install.sh runs
+# scripts/lock-skills.sh lock, which makes these skill folders read-only so
+# reviewed skills can't be rewritten. New agent-created skills still go to
+# ~/.hermes/skills (the default), separate from this repo.
+skills:
+  external_dirs:
+    - ~/agents/skills
+
+# Same MCP servers as Claude Code (see README). Hermes only passes the env vars listed.
+mcp_servers:
+  mlflow:
+    command: "uv"
+    args: ["run", "--with", "mlflow[mcp]==3.18.0", "mlflow", "mcp", "run"]
+    env:
+      MLFLOW_TRACKING_URI: "http://localhost:5000"

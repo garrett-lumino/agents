@@ -36,6 +36,14 @@ PUSH_SHORT='^-[uvqnd]+$'
 # A remote or refspec word: plain characters only (no quotes, globs, $), and no empty destination.
 PUSH_WORD='^[+]?[A-Za-z0-9._/@^~-]*(:[A-Za-z0-9._/@^~-]+)?$'
 
+# push_command_sets_config <cmd>: the command writes git config (git, with any global options,
+# then config/remote; .git/config; .gitconfig) or sets environment for later segments
+# (export, declare, typeset, set -a, source, ., GIT_* assignments).
+push_command_sets_config() {
+  printf '%s' "$1" | grep -Eq 'git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(config|remote)([[:space:]]|$)|\.git/config|\.gitconfig' && return 0
+  printf '%s' "$1" | grep -Eq '(^|[;&|[:space:]])(export|declare|typeset|source|\.)[[:space:]]|(^|[;&|[:space:]])set[[:space:]]+-[a-z]*a|GIT_[A-Z0-9_]*='
+}
+
 # With no refspec on the command line, configured push refspecs or mirroring decide what is sent.
 push_config_risky() {
   git -C "$1" config --get-regexp '^remote\..*\.(push|mirror)$' >/dev/null 2>&1 && return 0
@@ -95,9 +103,9 @@ push_exempt() {
 check_push_target() {
   local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
   push_exempt "$cwd" "$3" && return 0
-  # Config written earlier in the same command would not be seen by the checks below.
-  printf '%s' "$3" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(config|remote)([[:space:]]|$)|\.git/config|\.gitconfig' &&
-    deny "this command changes git config and pushes; run them as separate commands" "$seg"
+  # Config or environment set earlier in the same command would not be seen by the checks below.
+  push_command_sets_config "$3" &&
+    deny "this command changes git config or the environment and pushes; run them as separate commands" "$seg"
   set -f
   read -r -a words <<<"$seg"
   set +f

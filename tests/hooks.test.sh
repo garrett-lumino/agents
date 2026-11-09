@@ -85,6 +85,10 @@ test_guard_protected_push() {
   blocked 'git config remote.origin.push refs/heads/feat/ln-1-x:refs/heads/main; git push origin' "$repo"
   blocked 'git remote set-url --push origin x && git push origin feat/ln-1-x' "$repo"
   blocked 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true git push origin' "$repo"
+  blocked 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true; git push origin' "$repo"
+  blocked 'set -a; . ./gitenv; git push origin feat/ln-1-x' "$repo"
+  blocked 'git --no-pager config remote.origin.mirror true && git push origin' "$repo"
+  allowed 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"   # ordinary chains still work
   blocked 'env GIT_DIR=x git push origin feat/ln-1-x' "$repo"
   git -C "$repo" checkout -q main
   blocked 'git push origin @' "$repo"                           # @ is HEAD

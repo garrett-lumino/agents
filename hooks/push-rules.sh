@@ -36,12 +36,19 @@ PUSH_SHORT='^-[uvqnd]+$'
 # A remote or refspec word: plain characters only (no quotes, globs, $), and no empty destination.
 PUSH_WORD='^[+]?[A-Za-z0-9._/@^~-]*(:[A-Za-z0-9._/@^~-]+)?$'
 
-# push_command_sets_config <cmd>: the command writes git config (git, with any global options,
-# then config/remote; .git/config; .gitconfig) or sets environment for later segments
-# (export, declare, typeset, set -a, source, ., GIT_* assignments).
-push_command_sets_config() {
-  printf '%s' "$1" | grep -Eq 'git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(config|remote)([[:space:]]|$)|\.git/config|\.gitconfig' && return 0
-  printf '%s' "$1" | grep -Eq '(^|[;&|[:space:]])(export|declare|typeset|source|\.)[[:space:]]|(^|[;&|[:space:]])set[[:space:]]+-[a-z]*a|GIT_[A-Z0-9_]*='
+# push_chain_ok <cmd>: every part of the command is the push itself, a plain git add/commit/
+# status/diff/log/fetch/rev-parse, or a `| tail`/`| head`. Anything else (cd, env, export,
+# unset, eval, quoting tricks, heredoc text) could change what the push does unseen.
+push_chain_ok() {
+  local s cmd
+  cmd=$(printf '%s' "$1" | sed -E 's/[0-9]?>&[0-9]//g; s#[0-9]?>[[:space:]]*/dev/null##g')
+  # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
+  while IFS= read -r s; do
+    [[ "$s" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$s" =~ ^[[:space:]]*(tail|head)([[:space:]]+-n)?([[:space:]]+-?[0-9]+)?[[:space:]]*$ ]] && continue
+    [[ "$s" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[A-Za-z0-9._/~-]+)?[[:space:]]+(push|add|commit|status|diff|log|fetch|rev-parse)([[:space:]]|$) ]] || return 1
+  done < <(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')
+  return 0
 }
 
 # With no refspec on the command line, configured push refspecs or mirroring decide what is sent.
@@ -103,9 +110,11 @@ push_exempt() {
 check_push_target() {
   local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
   push_exempt "$cwd" "$3" && return 0
-  # Config or environment set earlier in the same command would not be seen by the checks below.
-  push_command_sets_config "$3" &&
-    deny "this command changes git config or the environment and pushes; run them as separate commands" "$seg"
+  # Redirections (2>&1, 2>/dev/null, > out) are not push arguments.
+  seg=$(printf '%s' "$seg" | sed -E 's/[[:space:]][0-9]?>>?[[:space:]]*[^[:space:]]*//g; s/[[:space:]][0-9]?>>?$//')
+  # Anything else in the same command could change the repo, config or environment unseen.
+  push_chain_ok "$3" ||
+    deny "a push runs as its own command (or after plain git add/commit); run the rest separately" "$seg"
   set -f
   read -r -a words <<<"$seg"
   set +f

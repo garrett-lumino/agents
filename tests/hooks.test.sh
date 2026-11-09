@@ -89,6 +89,13 @@ test_guard_protected_push() {
   blocked 'set -a; . ./gitenv; git push origin feat/ln-1-x' "$repo"
   blocked 'git --no-pager config remote.origin.mirror true && git push origin' "$repo"
   allowed 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"   # ordinary chains still work
+  allowed 'git push origin feat/ln-1-x 2>&1 | tail -5' "$repo"
+  # A push runs alone or after plain git add/commit/status; anything else in the command is refused.
+  blocked "cd $TMP && git push origin feat/ln-1-x" "$repo"
+  blocked 'HOME=/tmp/x true; git push origin feat/ln-1-x' "$repo"
+  blocked 'unset GIT_DIR; git push origin feat/ln-1-x' "$repo"
+  blocked "eval 'git config remote.origin.mirror true'; git push origin" "$repo"
+  blocked "g'i't conf'ig' remote.origin.mirror true; git push origin" "$repo"
   blocked 'env GIT_DIR=x git push origin feat/ln-1-x' "$repo"
   git -C "$repo" checkout -q main
   blocked 'git push origin @' "$repo"                           # @ is HEAD
@@ -161,6 +168,26 @@ test_guard_kubectl_prod() {
   KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl apply -f x.yaml'
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context=prod-lux scale deploy/play --replicas 0'
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl exec --context prod-lux -it play -- sh'
+  # Read verbs are the allowlist on prod; everything else is refused.
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl --context prod-lux wait --for=condition=ready pod/x'
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl --context prod-lux auth can-i delete pods'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context prod-lux certificate approve csr-1'
+  # Prod is also the cluster a context points to, and --cluster/--server/--user values.
+  printf 'apiVersion: v1\ncontexts:\n- context:\n    cluster: arn:aws:eks:us-east-1:1:cluster/lumino-prod\n    user: me\n  name: dev-lux\ncurrent-context: dev-lux\n' >"$kc"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl apply -f x.yaml'
+  printf 'apiVersion: v1\ncurrent-context: dev-lux\n' >"$kc"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --server https://prod.example delete pod x'
+  # The verb must be readable: unknown options before it on prod are refused.
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context prod-lux --as get delete pod x'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context prod-lux --frobnicate x delete pod x'
+  # Switching context or kubeconfig in the same command, or a KUBECONFIG= prefix.
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl config use-context prod-lux && kubectl apply -f x.yaml'
+  printf 'apiVersion: v1\ncurrent-context: lumino-prod\n' >"$TMP/prodcfg"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh "KUBECONFIG=$TMP/prodcfg kubectl apply -f x.yaml"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh "export KUBECONFIG=$TMP/prodcfg; kubectl apply -f x.yaml"
+  # A context that can't be worked out fails closed for writes only.
+  KUBECONFIG="$TMP/missing" bash_case 2 guard-bash.sh 'kubectl apply -f x.yaml'
+  KUBECONFIG="$TMP/missing" bash_case 0 guard-bash.sh 'kubectl get pods'
 }
 
 sql_tool_json() { jq -nc --arg q "$1" '{tool_name:"mcp__claude_ai_Supabase__execute_sql",tool_input:{project_id:"p",query:$q}}'; }

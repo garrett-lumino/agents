@@ -5,6 +5,8 @@ set -u
 . "$(dirname "$0")/lib.sh"
 # shellcheck source=hooks/push-rules.sh
 . "$(dirname "$0")/push-rules.sh"
+# shellcheck source=hooks/kube-rules.sh
+. "$(dirname "$0")/kube-rules.sh"
 
 deny() { block "BLOCKED by guard-bash: $1
   command: $2
@@ -78,41 +80,6 @@ check_git() {
   return 0
 }
 
-# Kubernetes contexts whose name contains "prod" are read-only for agents.
-KUBE_WRITE=" apply create delete edit patch replace scale rollout set label annotate drain cordon uncordon taint exec cp port-forward debug "
-
-kube_current_context() {
-  local f="${1:-${KUBECONFIG:-$HOME/.kube/config}}"
-  sed -n 's/^current-context:[[:space:]]*//p' "${f%%:*}" 2>/dev/null | head -n 1 | tr -d '"'"'"
-}
-
-check_kubectl() {
-  local seg="$1" words w i=0 found=0 ctx="" kcfg="" verb=""
-  set -f
-  read -r -a words <<<"$seg"
-  set +f
-  while [ "$i" -lt "${#words[@]}" ]; do
-    w="${words[$i]}"
-    i=$((i + 1))
-    [ "$found" = 1 ] || { [ "$w" = kubectl ] && found=1; continue; }
-    case "$w" in
-      --) break ;;
-      --context) ctx="${words[$i]:-}" && i=$((i + 1)) ;;
-      --context=*) ctx="${w#*=}" ;;
-      --kubeconfig) kcfg="${words[$i]:-}" && i=$((i + 1)) ;;
-      --kubeconfig=*) kcfg="${w#*=}" ;;
-      -n | --namespace | -l | --selector | -o | --output | -f | --filename | -c | --container | --cluster | --user | -s | --server) i=$((i + 1)) ;;
-      -*) ;;
-      *) [ -n "$verb" ] || verb=$w ;;
-    esac
-  done
-  [ "$found" = 1 ] || return 0
-  [ -n "$ctx" ] || ctx=$(kube_current_context "$kcfg")
-  case "$(lower "$ctx")" in *prod*) ;; *) return 0 ;; esac
-  case "$KUBE_WRITE" in *" $verb "*) deny "kubectl $verb against prod context '$ctx'" "$seg" ;; esac
-  return 0
-}
-
 check_terraform() {
   printf '%s' "$1" |
     grep -Eq '(^|[[:space:]])(terraform|tofu|terragrunt)([[:space:]]+[^[:space:]]+)*[[:space:]]+(apply|destroy)([[:space:]]|$)' &&
@@ -180,7 +147,7 @@ main() {
     check_rm "$seg"
     check_git "$seg" "$cwd" "$cmd"
     check_terraform "$seg"
-    check_kubectl "$seg"
+    check_kubectl "$seg" "$cwd" "$cmd"
     check_aws "$seg"
   done < <(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')
   exit 0

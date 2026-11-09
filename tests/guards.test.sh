@@ -69,6 +69,7 @@ test_pathspec_commit_guard() {
   bash_case 0 $h "cd $other && git commit -m x" "$r"                     # judged by the repo it commits in
   bash_case 2 $h "cd $r && git commit -m x" "$other"
   bash_case 2 $h 'cd "$X" && git commit -m x' "$other"                   # can't tell: fail closed
+  bash_case 2 $h "git commit -m x -- a; cd $r && git commit -m y" "$other"  # a second commit elsewhere
   bash_case 0 $h 'git status' "$r"
 }
 
@@ -147,6 +148,7 @@ test_secret_scan_commit() {
   bash_case 2 $h "\"cd\" $r && git commit -m x" "$clean"               # quoted cd
   bash_case 2 $h "(cd $r && git commit -m x)" "$clean"                # subshell
   bash_case 2 $h "env -C $r git commit -m x" "$clean"                 # a wrapper moves it
+  bash_case 2 $h "git commit -m a; cd $r && git commit -m x" "$clean" # a second commit elsewhere
   bash_case 2 $h "git -c core.worktree=$r commit -m x" "$clean"
   bash_case 0 $h 'GIT_AUTHOR_NAME=t git commit -m x' "$clean"            # plain assignments are fine
   # A tracked file committed from the working tree (-a, pathspecs, -i/-o) is scanned too.

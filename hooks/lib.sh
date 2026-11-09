@@ -119,13 +119,19 @@ commit_c_dirs() {
 # grouped cd, pushd/popd forms it can't read, wrappers before git, --git-dir, --work-tree,
 # GIT_DIR, core.worktree/gitdir config, --namespace).
 commit_root() {
-  local dir="$2" seg
+  local dir="$2" seg found=0
   [[ "$1" =~ --git-dir|--work-tree|GIT_DIR|GIT_WORK_TREE|worktree|gitdir|--namespace ]] && return 1
   # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
   while IFS= read -r seg; do
+    if [ "$found" = 1 ]; then
+      # One commit per command: a second commit, or a cd after the first, could land elsewhere.
+      is_commit "$seg" && return 1
+      printf '%s' "$seg" | tr -d "\"'\\\\" | grep -Eq '(^|[^[:alnum:]_])(cd|pushd|popd)([^[:alnum:]_]|$)' && return 1
+      continue
+    fi
     if is_commit "$seg"; then
       dir=$(commit_c_dirs "$seg" "$dir") || return 1
-      break
+      found=1
     elif [[ "$seg" =~ ^[[:space:]]*(cd|pushd)[[:space:]]+([^[:space:]]+)[[:space:]]*$ ]]; then
       dir=$(resolve_dir "${BASH_REMATCH[2]}" "$dir") || return 1
     elif printf '%s' "$seg" | tr -d "\"'\\\\" | grep -Eq '(^|[^[:alnum:]_])(cd|pushd|popd)([^[:alnum:]_]|$)'; then

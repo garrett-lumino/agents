@@ -17,7 +17,7 @@ Per-project config (boundary maps, linter configs) does **not** live here. Copy 
 | `hermes/config.snippet.yaml` | Points Hermes at the shared skills and the MLflow MCP server. |
 | `memory/` | Shared AI memory vault for every harness: the vault guide (`vault-AGENTS.md`), the pointer other harnesses load (`harness-AGENTS.md`), the `obsidian-memory` MCP server definition, the vault `.gitignore`. See [Shared memory](#shared-memory). |
 | `scripts/` | `install.sh`, `install-memory.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
-| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `memory`, `ml-hooks` and `skills` suites. |
+| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `coderabbit`, `memory`, `ml-hooks` and `skills` suites. |
 
 Requires `bash`, `jq` and `git`. Formatters and linters (goimports, gofumpt, golangci-lint, prettier, eslint, ruff, terraform) are optional: hooks skip any that aren't installed. The ML launch gate is the exception: without `jq` it fails closed.
 
@@ -182,6 +182,9 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
   - Override with a `lint:allow-float` comment.
 - **nolint-justification.sh**: `//nolint`, `# noqa` and `eslint-disable` must name the rule and give a reason.
 - **index-concurrently-guard.sh**: in migration files, `CREATE INDEX` without `CONCURRENTLY`, or `ADD COLUMN` with a volatile default. Override with `-- lint:allow-blocking <reason>`.
+
+**PostToolUse (Bash, background):**
+- **coderabbit-watch.sh**: after `gh pr create`, or `git push` on a branch with an open PR, in an allowed repo (`AGENTS_CR_REPOS`, default `Lumino-Devs/lumino-services`), it waits in the background (`asyncRewake`) for CodeRabbit's review of the pushed commit, then wakes the agent with the review's "Prompt to fix all issues" block (or the inline comment titles), framed as untrusted GitHub data. One watcher per commit; polls every 30 s (`AGENTS_CR_POLL`) for up to 30 min (`AGENTS_CR_WAIT`), and says so if no review arrives. It can only wake a session that is still running.
 
 **Stop:**
 - **stop-gate.sh** runs `make check` if the repo's Makefile has a `check` target, and blocks the stop when it fails. It skips when `stop_hook_active` is true.

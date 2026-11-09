@@ -66,6 +66,9 @@ test_pathspec_commit_guard() {
   bash_case 0 $h 'git add -- a.go && git commit -m "LN-1: x" -- a.go' "$r"
   bash_case 0 $h "git commit -F - -- a.go b.go <<'EOF'" "$r"
   bash_case 0 $h 'git commit -m "x"' "$other"                            # other repos untouched
+  bash_case 0 $h "cd $other && git commit -m x" "$r"                     # judged by the repo it commits in
+  bash_case 2 $h "cd $r && git commit -m x" "$other"
+  bash_case 2 $h 'cd "$X" && git commit -m x' "$other"                   # can't tell: fail closed
   bash_case 0 $h 'git status' "$r"
 }
 
@@ -117,12 +120,18 @@ Plan: 1 to add, 0 to change, 0 to destroy.'
   check "tf: says never apply" grep -qi 'never apply' "$TMP/tf-err"
 }
 
+# fake_aws_creds: a credentials file gitleaks flags, assembled at run time so the literal
+# key never sits in this repo (where the commit scan would flag it).
+fake_aws_creds() {
+  printf 'aws_access_key_id = %s%s\naws_secret_access_key = %s%s\n' AKIA Z7Q3XG4ZKXMPLE42 wJalrXUtnFEMI/K7MDENG/ bPxRfiCYzEXAMPLEKEYx9
+}
+
 test_secret_scan_commit() {
   local h=secret-scan-commit.sh r
   r=$(new_repo leaks)
   printf 'package x\n' >"$r/clean.go" && git -C "$r" add clean.go
   bash_case 0 $h 'git commit -m "clean"' "$r"
-  printf 'aws_access_key_id = AKIAZ7Q3XG4ZKXMPLE42\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEYx9\n' >"$r/creds.env"
+  fake_aws_creds >"$r/creds.env"
   bash_case 2 $h 'git add -- creds.env && git commit -m x -- creds.env' "$r"   # about to be added
   git -C "$r" add creds.env
   bash_case 2 $h 'git commit -m "x"' "$r"                                        # staged
@@ -137,14 +146,22 @@ test_secret_scan_commit() {
   bash_case 2 $h "git -C$r commit -m x" "$clean"                      # attached -C<dir>
   bash_case 2 $h "\"cd\" $r && git commit -m x" "$clean"               # quoted cd
   bash_case 2 $h "(cd $r && git commit -m x)" "$clean"                # subshell
+  bash_case 2 $h "env -C $r git commit -m x" "$clean"                 # a wrapper moves it
+  bash_case 2 $h "git -c core.worktree=$r commit -m x" "$clean"
+  bash_case 0 $h 'GIT_AUTHOR_NAME=t git commit -m x' "$clean"            # plain assignments are fine
   # A tracked file committed from the working tree (-a, pathspecs, -i/-o) is scanned too.
   local tracked
   tracked=$(new_repo leaktracked)
   printf 'x = 1\n' >"$tracked/conf.env" && git -C "$tracked" add conf.env &&
     git -C "$tracked" -c user.email=t@t -c user.name=t commit -q -m base
-  printf 'aws_access_key_id = AKIAZ7Q3XG4ZKXMPLE42\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEYx9\n' >"$tracked/conf.env"
+  fake_aws_creds >"$tracked/conf.env"
   bash_case 2 $h 'git commit -m x conf.env' "$tracked"
   bash_case 2 $h 'git commit -o -m x -- conf.env' "$tracked"
+  # Untracked files are scanned whenever the command adds, however git add is spelled.
+  local untr
+  untr=$(new_repo leakuntracked)
+  fake_aws_creds >"$untr/new.env"
+  bash_case 2 $h "git -C $untr add . && git -C $untr commit -m x" "$clean"
   # A file whose name has a newline is still scanned.
   git -C "$r" reset -q
   mv "$r/creds.env" "$r/$(printf 'a\nb.env')"

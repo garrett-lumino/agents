@@ -73,6 +73,68 @@ is_git_commit() {
   printf '%s' "$1" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+commit([[:space:]]|$)'
 }
 
+# is_commit <text>: a git commit, with any git global options before `commit`.
+is_commit() {
+  [[ "$1" =~ (^|[\;\&\|[:space:]])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit([[:space:]]|$) ]]
+}
+
+# resolve_dir <dir> <base>: an absolute path, or nothing when the shell could rewrite it.
+resolve_dir() {
+  local d="$1"
+  [[ "$d" =~ [\"\'\$\`\\*?[{] ]] && return 1
+  d="${d/#\~/$HOME}"
+  [[ "$d" == /* ]] || d="$2/$d"
+  printf '%s' "$d"
+}
+
+# commit_c_dirs <commit segment> <dir>: <dir> after the segment's git -C options (-C <d>, -C<d>,
+# any number, anywhere before `commit`).
+commit_c_dirs() {
+  local words w i=0 dir="$2" d in_git=0
+  set -f
+  read -r -a words <<<"$1"
+  set +f
+  while [ "$i" -lt "${#words[@]}" ]; do
+    w="${words[$i]}"
+    i=$((i + 1))
+    if [ "$in_git" = 0 ]; then
+      # Only VAR=value may come before git; a wrapper (env -C, sudo, ...) could move the repo.
+      [ "$w" = git ] && in_git=1 && continue
+      [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || return 1
+      continue
+    fi
+    [ "$w" = commit ] && break
+    case "$w" in
+      -C) d="${words[$i]:-}" && i=$((i + 1)) ;;
+      -C?*) d="${w#-C}" ;;
+      *) continue ;;
+    esac
+    dir=$(resolve_dir "$d" "$dir") || return 1
+  done
+  printf '%s' "$dir"
+}
+
+# commit_root <cmd> <cwd>: the repo the commit runs in, following plain `cd <dir>` segments
+# before it and git -C options; fails for anything else that could move it (quoted or
+# grouped cd, pushd/popd forms it can't read, wrappers before git, --git-dir, --work-tree,
+# GIT_DIR, core.worktree/gitdir config, --namespace).
+commit_root() {
+  local dir="$2" seg
+  [[ "$1" =~ --git-dir|--work-tree|GIT_DIR|GIT_WORK_TREE|worktree|gitdir|--namespace ]] && return 1
+  # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
+  while IFS= read -r seg; do
+    if is_commit "$seg"; then
+      dir=$(commit_c_dirs "$seg" "$dir") || return 1
+      break
+    elif [[ "$seg" =~ ^[[:space:]]*(cd|pushd)[[:space:]]+([^[:space:]]+)[[:space:]]*$ ]]; then
+      dir=$(resolve_dir "${BASH_REMATCH[2]}" "$dir") || return 1
+    elif printf '%s' "$seg" | tr -d "\"'\\\\" | grep -Eq '(^|[^[:alnum:]_])(cd|pushd|popd)([^[:alnum:]_]|$)'; then
+      return 1
+    fi
+  done < <(printf '%s\n' "$1" | tr ';&|' '\n\n\n')
+  repo_root "$dir"
+}
+
 # Files a git command is about to commit, relative to the repo root: everything
 # staged, plus every changed/untracked file when the command also runs `git add`
 # or `commit -a` (over-approximates, which is the safe direction for a gate).

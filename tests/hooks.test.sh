@@ -218,6 +218,7 @@ test_guard_kubectl_prod() {
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x --context= prod-lux'                      # empty attached value
   KUBECONFIG="$TMP/prodcfg" bash_case 2 guard-bash.sh 'kubectl delete pod x --context= dev-lux'            # empty = current (prod)
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x -qs https://prod.example'                # -s in a flag group
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x -shttps://prod.example/a=b'              # -s value with an =
   KUBECONFIG="$kc" bash_case 0 guard-bash.sh "kubectl get pods -o jsonpath='{.items[*].metadata.name}'"
   # A context that can't be worked out fails closed for writes only.
   KUBECONFIG="$TMP/missing" bash_case 2 guard-bash.sh 'kubectl apply -f x.yaml'

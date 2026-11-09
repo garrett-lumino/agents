@@ -53,4 +53,4 @@ prompt=$(fix_prompt "$body")
 [ -n "$prompt" ] || prompt=$(inline_titles "$(jq -r .id <<<"$review")")
 wake "$header
 
-${prompt:-No comment text could be extracted; read the review at $url}"
+$(pw_fence "CODERABBIT REVIEW" "$(printf '%s' "${prompt:-No comment text could be extracted; read the review at $url}" | head -c $((MAX_CHARS - 1500)))")"

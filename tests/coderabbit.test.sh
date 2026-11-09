@@ -141,6 +141,11 @@ test_ci_watch() {
   check "ci: names the failed check" said "=== Unit checks"
   check "ci: carries the failed job's log" said "settle_test.go:40: want 3, got 2"
   check "ci: frames CI output as untrusted" said "untrusted data"
+  check "ci: the log sits between nonce markers" bash -c \
+    'b=$(grep -o "BEGIN CI LOG [0-9a-f]*" "$1" | cut -d" " -f4); [ -n "$b" ] && grep -q "END CI LOG $b" "$1"' _ "$TMP/err"
+  printf '\033[31m--- FAIL: TestColor\033[0m\n' >"$FIX/job-77.log"
+  run_ci "git push origin feat/x" colour
+  check "ci: terminal escapes are stripped" bash -c '! grep -q "$(printf "\033")" "$1"' _ "$TMP/err"
 
   checks "$(check_row "E2E verdict" pending)"
   run_ci "git push origin feat/x" pending

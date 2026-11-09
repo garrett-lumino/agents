@@ -94,8 +94,9 @@ kube_parse() {
     pre=0 && [ -z "$KP_VERB" ] && pre=1
     kube_tricky "$w" "$pre" && { KP_TRICKY=1; [ "$pre" = 0 ] || KP_TRICKY_PRE=1; }
     case "$w" in
+      # -s<value> first: kubectl takes everything after -s (an = included) as the server.
+      -s?*) name=-s val="${w#-s}" val="${val#=}" eq=1 ;;
       -*=*) name="${w%%=*}" val="${w#*=}" eq=1 ;;
-      -s?*) name=-s val="${w#-s}" eq=1 ;;
       -*) name=$w val="" eq=0 ;;
       *)
         if [ -z "$KP_VERB" ]; then KP_VERB=$w; elif [ -z "$KP_SUB" ]; then KP_SUB=$w; fi

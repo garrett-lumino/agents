@@ -68,14 +68,35 @@ test_guard_protected_push() {
 # The agents repo itself may take direct pushes to main; nothing else may.
 test_guard_direct_push_repo() {
   local own other
+  local work=https://github.com/Lumino-Devs/lumino-services.git
   own=$(new_repo own) && git -C "$own" remote add origin git@github.com:garrett-lumino/agents.git
-  other=$(new_repo other) && git -C "$other" remote add origin https://github.com/Lumino-Devs/lumino-services.git
+  git -C "$own" config branch.main.remote origin
+  git -C "$own" remote add work "$work"
+  other=$(new_repo other) && git -C "$other" remote add origin "$work"
   allowed 'git push origin main' "$own"
-  allowed 'git push' "$own"
+  allowed 'git push' "$own"                          # upstream remote is origin
   allowed "git -C $own push origin main" "$other"   # -C names the repo, not the cwd
   blocked 'git push origin main' "$other"
   blocked "git -C $other push origin main" "$own"
-  blocked "cd $own && git -C $other push origin develop" "$own"
+  # The exemption follows where the push really goes, and fails closed otherwise.
+  blocked 'git push work main' "$own"                                     # another remote
+  blocked "git push $work HEAD:develop" "$own"                            # a raw URL
+  blocked "cd $other && git push origin main" "$own"                       # cd moves the repo
+  blocked "pushd $other; git push origin main" "$own"
+  blocked "git --git-dir=$other/.git push origin main" "$own"
+  blocked "GIT_DIR=$other/.git git push origin main" "$own"
+  blocked "git -C $own -C $other push origin main" "$other"                # -C stacks
+  blocked "git -c remote.origin.pushurl=$work push origin main" "$own"     # config override
+  blocked 'git push --repo=work main' "$own"
+  git -C "$own" remote set-url --push origin "$work"
+  blocked 'git push origin main' "$own"                                    # push URL differs from fetch
+  git -C "$own" config --unset remote.origin.pushurl
+  git -C "$own" config url.https://github.com/Lumino-Devs/.pushInsteadOf git@github.com:garrett-lumino/
+  blocked 'git push origin main' "$own"                                    # pushInsteadOf rewrite
+  git -C "$own" config --unset url.https://github.com/Lumino-Devs/.pushInsteadOf
+  allowed 'git push origin main' "$own"
+  git -C "$own" remote set-url origin https://github.com.evil.example/garrett-lumino/agents.git
+  blocked 'git push origin main' "$own"                                    # wrong host
 }
 
 sql_tool_json() { jq -nc --arg q "$1" '{tool_name:"mcp__claude_ai_Supabase__execute_sql",tool_input:{project_id:"p",query:$q}}'; }

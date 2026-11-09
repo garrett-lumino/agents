@@ -76,27 +76,77 @@ push_dest() {
   printf '%s' "$ref"
 }
 
-# Repos (owner/name of origin) whose protected branches may take direct pushes.
+# GitHub repos (owner/name) whose protected branches may take direct pushes.
 DIRECT_PUSH_REPOS="${AGENTS_DIRECT_PUSH_REPOS:-garrett-lumino/agents}"
 
-direct_push_allowed() {
-  local url repo
-  url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 1
-  repo=$(printf '%s' "$url" | sed -E 's#\.git$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')
-  case " $DIRECT_PUSH_REPOS " in *" $repo "*) return 0 ;; esac
+# github_repo <url>: owner/name of a github.com https/ssh/scp URL; nothing for anything else.
+github_repo() {
+  printf '%s' "$1" | sed -nE 's#^(https://|ssh://git@|git@)github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$#\2#p' | sed 's#\.git$##'
+}
+
+is_listed_repo() {
+  local entry
+  for entry in $DIRECT_PUSH_REPOS; do [ "$1" = "$entry" ] && return 0; done
   return 1
 }
 
-# Direct pushes to main/master/develop go through a PR instead.
-check_push_target() {
-  local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
+# push_target <seg> <cwd>: print "<repo dir>\t<remote>" for a plain `git [-C dir] push [remote]`.
+# Fails for any form whose destination it can't be sure of.
+push_target() {
+  local seg="$1" dir="$2" words w prev="" seen=0 dirs=0 remote="" branch
   set -f
   read -r -a words <<<"$seg"
   set +f
   for w in "${words[@]}"; do
     if [ "$seen" = 0 ]; then
-      [ "$prev" = -C ] && cwd="${w/#\~/$HOME}" # `git -C <dir>` names the repo
-      [ "$w" = push ] && { seen=1; direct_push_allowed "$cwd" && return 0; }
+      case "$prev" in
+        -C) dirs=$((dirs + 1)) && case "$w" in /*) dir=$w ;; "~"*) dir="$HOME${w#\~}" ;; *) dir="$dir/$w" ;; esac ;;
+        -c) return 1 ;;
+      esac
+      [ "$w" = push ] && seen=1
+      prev=$w
+      continue
+    fi
+    case "$w" in --repo* | -o | --push-option*) return 1 ;; -*) continue ;; esac
+    remote=$w
+    break
+  done
+  [ "$seen" = 1 ] && [ "$dirs" -le 1 ] || return 1
+  if [ -z "$remote" ]; then
+    branch=$(current_branch "$dir") || return 1
+    remote=$(git -C "$dir" config "branch.$branch.pushRemote" || git -C "$dir" config remote.pushDefault ||
+      git -C "$dir" config "branch.$branch.remote" || echo origin)
+  fi
+  printf '%s\t%s' "$dir" "$remote"
+}
+
+# push_exempt <seg> <cwd> <cmd>: true only when the push certainly lands on a listed repo.
+push_exempt() {
+  local target dir remote urls url repo
+  # Anything that can move or rewrite the repo git acts on voids the exemption.
+  printf '%s' "$3" | grep -Eq '(^|[;&|[:space:](])(cd|pushd)([[:space:]]|$)|--git-dir|--work-tree|--config-env|GIT_DIR|GIT_WORK_TREE|GIT_CONFIG|[$`]' && return 1
+  target=$(push_target "$1" "$2") || return 1
+  dir=${target%%$'\t'*} remote=${target#*$'\t'}
+  # A named remote only (a raw URL is not one); every push URL must be a listed repo.
+  urls=$(git -C "$dir" remote get-url --push --all "$remote" 2>/dev/null) && [ -n "$urls" ] || return 1
+  while IFS= read -r url; do
+    repo=$(github_repo "$url")
+    [ -n "$repo" ] && is_listed_repo "$repo" || return 1
+  done <<<"$urls"
+  return 0
+}
+
+# Direct pushes to main/master/develop go through a PR instead.
+check_push_target() {
+  local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
+  push_exempt "$seg" "$cwd" "$3" && return 0
+  set -f
+  read -r -a words <<<"$seg"
+  set +f
+  for w in "${words[@]}"; do
+    if [ "$seen" = 0 ]; then
+      [ "$prev" = -C ] && cwd="${w/#\~/$HOME}" # `git -C <dir>` names the repo for the branch checks
+      [ "$w" = push ] && seen=1
       prev=$w
       continue
     fi
@@ -118,12 +168,12 @@ check_push_target() {
 }
 
 check_git() {
-  local seg="$1" cwd="$2" branch
+  local seg="$1" cwd="$2" cmd="$3" branch
   printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' || return 0
   if printf '%s' "$seg" | grep -Eq '[[:space:]]push([[:space:]]|$)'; then
     printf '%s' "$seg" | grep -Eq '[[:space:]](--force[^[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*)([[:space:]]|$)' &&
       deny "force push" "$seg"
-    check_push_target "$seg" "$cwd"
+    check_push_target "$seg" "$cwd" "$cmd"
   fi
   printf '%s' "$seg" | grep -Eq '[[:space:]]reset[[:space:]].*--hard|--hard.*[[:space:]]reset([[:space:]]|$)' || return 0
   branch=$(current_branch "$cwd")
@@ -196,7 +246,7 @@ main() {
   # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
   while IFS= read -r seg; do
     check_rm "$seg"
-    check_git "$seg" "$cwd"
+    check_git "$seg" "$cwd" "$cmd"
     check_terraform "$seg"
     check_aws "$seg"
   done < <(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')

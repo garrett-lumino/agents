@@ -17,7 +17,7 @@ Per-project config (boundary maps, linter configs) does **not** live here. Copy 
 | `hermes/config.snippet.yaml` | Points Hermes at the shared skills and the MLflow MCP server. |
 | `memory/` | Shared AI memory vault for every harness: the vault guide (`vault-AGENTS.md`), the pointer other harnesses load (`harness-AGENTS.md`), the `obsidian-memory` MCP server definition, the vault `.gitignore`. See [Shared memory](#shared-memory). |
 | `scripts/` | `install.sh`, `install-memory.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
-| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `coderabbit`, `memory`, `ml-hooks` and `skills` suites. |
+| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `coderabbit`, `guards`, `memory`, `ml-hooks` and `skills` suites. |
 
 Requires `bash`, `jq` and `git`. Formatters and linters (goimports, gofumpt, golangci-lint, prettier, eslint, ruff, terraform) are optional: hooks skip any that aren't installed. The ML launch gate is the exception: without `jq` it fails closed.
 
@@ -163,6 +163,7 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
   - `--trust-remote-code`
   - committing `.env*` (except `.env.example`), weights (`*.safetensors`, `*.gguf`, `*.bin`, `*.pt`, …), `adapters/` or `data/raw/`
 - **ml-launch-gate.sh** blocks paid GPU launches until `.ml/cost-estimate.json` exists. The estimate must be under 24h old with `est_usd ≤ max_usd` and a timeout. Launches and `hf upload` also need `.ml/data-attestation.json` with `pan_hits: 0`. It covers `hf jobs`, the HF MCP `hf_jobs` tool, `modal run/deploy`, `runpodctl create`, `together fine-tuning create`, `sky launch` and Lambda launch calls.
+- **secret-print-guard.sh** blocks commands that print secret values into the transcript: `doppler secrets` / `secrets get` (unless `--only-names`), `doppler secrets download --no-file`, `aws secretsmanager get-secret-value`, `aws ssm get-parameter(s) --with-decryption`, `kubectl get secret -o yaml|json|jsonpath`. Use `doppler run -- <cmd>` or pipe the value into its consumer.
 - **perf-commit-gate.sh**: a commit whose message says perf, optimize, faster or speed up needs benchstat output, either in the message or in a staged `perf/*.txt`.
 - **migration-explain-gate.sh**: committing a migration with `CREATE INDEX`, `SELECT` or `JOIN` needs `docs/explain/<migration>.txt` containing EXPLAIN ANALYZE output. **Opt-in:** it only applies in repos that have a `docs/explain/` directory (the service template creates one).
 - **bench-count-guard.sh**: `go test -bench` output saved to a file needs `-count` of at least 6.

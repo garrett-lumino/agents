@@ -145,7 +145,7 @@ Hermes reads `AGENTS.md` only from the current working directory, so the global 
 
 ## What the hooks enforce
 
-All hooks block with exit 2 and a reason on stderr. Command checks skip only the body of a commit-message or PR-body heredoc (`git commit … -F - <<EOF`, `gh pr create … --body-file - <<EOF`, nothing after the marker); every other heredoc body is read, and the SQL check reads everything. These hooks read shell text: code an interpreter runs (`python3 -c`, a script file, `os.system(…)`) is out of their reach. PostToolUse hooks can't undo an edit, so their message tells the agent what to fix.
+All hooks block with exit 2 and a reason on stderr. Command checks skip a heredoc body only when the whole command is one commit message or PR body (`[git add <paths> && ]git commit … -F - <<EOF`, `gh pr create … --body-file - <<EOF`: one `<<`, nothing after the marker or the closing line); in any other command every heredoc body is read, and the SQL check reads everything. These hooks read shell text: code an interpreter runs (`python3 -c`, a script file, `os.system(…)`) is out of their reach. PostToolUse hooks can't undo an edit, so their message tells the agent what to fix.
 
 **PreToolUse (Bash):**
 - **guard-bash.sh** blocks:

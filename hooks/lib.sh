@@ -33,36 +33,42 @@ json_get() {
   printf '%s' "$HOOK_INPUT" | jq -r "$1 // empty" 2>/dev/null
 }
 
-# strip_heredocs <cmd>: the command with the bodies of message heredocs removed, so a commit
-# message or PR body isn't read as commands. Allowlist, not denylist: a body is stripped only
-# when its line is exactly `git [-C d] commit ... -F|--file - <<WORD` or
-# `gh pr|issue create|edit|comment|review ... --body-file|-F - <<WORD`, with a plain or
-# plainly quoted WORD and nothing after it. Every other heredoc (cat <<EOF | bash,
-# python3 - <<EOF, ...) keeps its body. Checks that must read heredoc data (SQL) skip this.
+# strip_heredocs <cmd>: a message-only command with its message body removed, so a commit
+# message or PR body isn't read as commands. The whole command must be one line that is
+# exactly `[git add <paths> && ]git [-C d] commit ... -F|--file - <<WORD` or
+# `gh pr|issue create|edit|comment|review ... --body-file|-F - <<WORD` (one `<<`, a plain or
+# plainly quoted WORD, nothing after it), then the body, then WORD, then nothing. Any other
+# command is returned unchanged, every heredoc body in it read. SQL checks skip this.
 strip_heredocs() {
   printf '%s\n' "$1" | awk '
     BEGIN {
       arg = "([ \t]+(\"[^\"]*\"|\047[^\047]*\047|[^ \t<>|;&\047\"$`]+))*"
+      plain = "([ \t]+[^ \t<>|;&\047\"$`]+)*"
       word = "(\047[A-Za-z_][A-Za-z0-9_]*\047|\"[A-Za-z_][A-Za-z0-9_]*\"|[A-Za-z_][A-Za-z0-9_]*)"
       tail = "[ \t]+-" arg "[ \t]+<<-?[ \t]*" word "[ \t]*$"
-      start = "(^|&&|;)[ \t]*"
-      gitmsg = start "git([ \t]+-C[ \t]+[^ \t<>|;&\047\"$`]+)?[ \t]+commit" arg "[ \t]+(-F|--file)" tail
-      ghmsg = start "gh[ \t]+(pr|issue)[ \t]+(create|edit|comment|review)" arg "[ \t]+(--body-file|-F)" tail
+      add = "([ \t]*git[ \t]+add" plain "[ \t]*&&)*"
+      gitmsg = "^" add "[ \t]*git([ \t]+-C[ \t]+[^ \t<>|;&\047\"$`]+)?[ \t]+commit" arg "[ \t]+(-F|--file)" tail
+      ghmsg = "^[ \t]*gh[ \t]+(pr|issue)[ \t]+(create|edit|comment|review)" arg "[ \t]+(--body-file|-F)" tail
     }
-    delim != "" {
-      line = $0
-      if (dash) sub(/^\t+/, "", line)
-      if (line == delim) { delim = ""; print "" }
-      next
-    }
-    { print }
-    $0 ~ gitmsg || $0 ~ ghmsg {
-      tok = $0
+    { lines[NR] = $0 }
+    END {
+      first = lines[1]
+      ops = first
+      if (NR < 3 || (first !~ gitmsg && first !~ ghmsg) || gsub(/<</, "", ops) != 1) { dump(); exit }
+      tok = first
       sub(/^.*<</, "<<", tok)
       dash = (tok ~ /^<<-/)
       gsub(/^<<-?[ \t]*|["\047 \t]/, "", tok)
-      delim = tok
-    }'
+      for (i = 2; i <= NR; i++) {
+        line = lines[i]
+        if (dash) sub(/^\t+/, "", line)
+        if (line == tok) break
+      }
+      if (i > NR) { dump(); exit }
+      for (j = i + 1; j <= NR; j++) if (lines[j] !~ /^[ \t]*$/) { dump(); exit }
+      print first
+    }
+    function dump(   k) { for (k = 1; k <= NR; k++) print lines[k] }'
 }
 
 # hook_command: the Bash tool command with heredoc bodies stripped (see strip_heredocs).

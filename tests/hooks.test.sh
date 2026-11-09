@@ -98,6 +98,10 @@ test_guard_protected_push() {
   # Only a commit message or PR body heredoc is data; every other body is read.
   blocked "$(printf 'cat <<EOF | bash\ngit push origin main\nEOF')" "$repo"
   blocked "$(printf 'git commit -F - <<EOF && bash\ngit push origin main\nEOF')" "$repo"   # something after the marker
+  blocked "$(printf 'bash <<X; git commit -F - <<EOF\ngit push origin main\nX\nmsg\nEOF')" "$repo"   # two heredocs
+  blocked "$(printf 'cat <<OUTER | bash\ngit commit -F - <<EOF\nx\nEOF\ngit push origin main\nOUTER')" "$repo"  # nested
+  blocked "$(printf 'git commit -F - -- a <<EOF\nmsg\nEOF\ngit push origin main')" "$repo"   # commands after the body
+  allowed "$(printf 'git add -- a && git commit -F - -- a <<'"'"'EOF'"'"'\nnote: git push origin main later\nEOF')" "$repo"
   allowed "$(printf 'gh pr create --title \"LN-1: x\" --body-file - <<'"'"'EOF'"'"'\nthen git push origin main\nEOF')" "$repo"
   # A push is its own command: commit hooks and fetch/log/diff options can run code.
   blocked 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"

@@ -95,6 +95,10 @@ test_guard_protected_push() {
   blocked "$(printf 'bash <<'"'"'EOF'"'"'\ngit push origin main\nEOF')" "$repo"
   blocked "$(printf 'ssh host sh <<EOF\ngit push origin main\nEOF')" "$repo"
   blocked "$(printf 'psql <<EOF\nDROP TABLE users;\nEOF')"                          # SQL still read in heredocs
+  # Only a commit message or PR body heredoc is data; every other body is read.
+  blocked "$(printf 'cat <<EOF | bash\ngit push origin main\nEOF')" "$repo"
+  blocked "$(printf 'git commit -F - <<EOF && bash\ngit push origin main\nEOF')" "$repo"   # something after the marker
+  allowed "$(printf 'gh pr create --title \"LN-1: x\" --body-file - <<'"'"'EOF'"'"'\nthen git push origin main\nEOF')" "$repo"
   # A push is its own command: commit hooks and fetch/log/diff options can run code.
   blocked 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"
   blocked "git fetch --upload-pack='touch x' origin && git push origin feat/ln-1-x" "$repo"

@@ -33,12 +33,22 @@ json_get() {
   printf '%s' "$HOOK_INPUT" | jq -r "$1 // empty" 2>/dev/null
 }
 
-# strip_heredocs <cmd>: the command with heredoc bodies removed (<<WORD, <<'WORD', <<-WORD; not
-# <<< here-strings), so text like a commit message isn't read as commands. A body fed to a
-# shell (any of bash sh zsh dash ksh fish source . eval ssh sudo env xargs exec in that
-# segment) is kept: there it IS commands. Checks that must read heredoc data (SQL) skip this.
+# strip_heredocs <cmd>: the command with the bodies of message heredocs removed, so a commit
+# message or PR body isn't read as commands. Allowlist, not denylist: a body is stripped only
+# when its line is exactly `git [-C d] commit ... -F|--file - <<WORD` or
+# `gh pr|issue create|edit|comment|review ... --body-file|-F - <<WORD`, with a plain or
+# plainly quoted WORD and nothing after it. Every other heredoc (cat <<EOF | bash,
+# python3 - <<EOF, ...) keeps its body. Checks that must read heredoc data (SQL) skip this.
 strip_heredocs() {
   printf '%s\n' "$1" | awk '
+    BEGIN {
+      arg = "([ \t]+(\"[^\"]*\"|\047[^\047]*\047|[^ \t<>|;&\047\"$`]+))*"
+      word = "(\047[A-Za-z_][A-Za-z0-9_]*\047|\"[A-Za-z_][A-Za-z0-9_]*\"|[A-Za-z_][A-Za-z0-9_]*)"
+      tail = "[ \t]+-" arg "[ \t]+<<-?[ \t]*" word "[ \t]*$"
+      start = "(^|&&|;)[ \t]*"
+      gitmsg = start "git([ \t]+-C[ \t]+[^ \t<>|;&\047\"$`]+)?[ \t]+commit" arg "[ \t]+(-F|--file)" tail
+      ghmsg = start "gh[ \t]+(pr|issue)[ \t]+(create|edit|comment|review)" arg "[ \t]+(--body-file|-F)" tail
+    }
     delim != "" {
       line = $0
       if (dash) sub(/^\t+/, "", line)
@@ -46,14 +56,12 @@ strip_heredocs() {
       next
     }
     { print }
-    match($0, /(^|[^<])<<-?[ \t]*["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/) {
-      tok = substr($0, RSTART, RLENGTH)
-      sub(/^[^<]/, "", tok)
-      pre = substr($0, 1, RSTART)
+    $0 ~ gitmsg || $0 ~ ghmsg {
+      tok = $0
+      sub(/^.*<</, "<<", tok)
       dash = (tok ~ /^<<-/)
-      gsub(/^<<-?[ \t]*|["\047]/, "", tok)
-      n = split(pre, parts, /[;&|(]/)
-      if (parts[n] !~ /(^|[ \t])(bash|sh|zsh|dash|ksh|fish|source|\.|eval|ssh|sudo|env|xargs|exec)([ \t]|$)/) delim = tok
+      gsub(/^<<-?[ \t]*|["\047 \t]/, "", tok)
+      delim = tok
     }'
 }
 

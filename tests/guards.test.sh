@@ -133,6 +133,18 @@ test_secret_scan_commit() {
   bash_case 2 $h "cd $r && git commit -m x" "$clean"
   bash_case 2 $h "git --git-dir=$r/.git commit -m x" "$clean"
   bash_case 2 $h 'cd "$X" && git commit -m x' "$clean"
+  bash_case 2 $h "git --no-pager -C $r commit -m x" "$clean"          # -C after another option
+  bash_case 2 $h "git -C$r commit -m x" "$clean"                      # attached -C<dir>
+  bash_case 2 $h "\"cd\" $r && git commit -m x" "$clean"               # quoted cd
+  bash_case 2 $h "(cd $r && git commit -m x)" "$clean"                # subshell
+  # A tracked file committed from the working tree (-a, pathspecs, -i/-o) is scanned too.
+  local tracked
+  tracked=$(new_repo leaktracked)
+  printf 'x = 1\n' >"$tracked/conf.env" && git -C "$tracked" add conf.env &&
+    git -C "$tracked" -c user.email=t@t -c user.name=t commit -q -m base
+  printf 'aws_access_key_id = AKIAZ7Q3XG4ZKXMPLE42\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEYx9\n' >"$tracked/conf.env"
+  bash_case 2 $h 'git commit -m x conf.env' "$tracked"
+  bash_case 2 $h 'git commit -o -m x -- conf.env' "$tracked"
   # A file whose name has a newline is still scanned.
   git -C "$r" reset -q
   mv "$r/creds.env" "$r/$(printf 'a\nb.env')"

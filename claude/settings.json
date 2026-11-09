@@ -72,7 +72,7 @@
     "typescript-lsp@claude-plugins-official": true,
     "gopls-lsp@claude-plugins-official": true,
     "coderabbit@claude-plugins-official": true,
-    "andrej-karpathy-skills@karpathy-skills": true,
+    "andrej-karpathy-skills@karpathy-skills": false,
     "hf-cli@huggingface-skills": true,
     "cc-skills-golang@samber": false,
     "terraform@hashicorp": false,

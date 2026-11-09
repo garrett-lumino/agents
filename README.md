@@ -75,20 +75,18 @@ The format and rules every tool follows are in `memory/vault-AGENTS.md`, copied 
 /plugin install gopls-lsp@claude-plugins-official      # needs gopls: go install golang.org/x/tools/gopls@latest
 /plugin install coderabbit@claude-plugins-official     # needs the CodeRabbit CLI: brew install coderabbit && coderabbit auth login
 
-/plugin marketplace add multica-ai/andrej-karpathy-skills
-/plugin install andrej-karpathy-skills@karpathy-skills
-
 /plugin marketplace add huggingface/skills
 /plugin install hf-cli@huggingface-skills
 ```
 
-All IDs were checked against each repo's `.claude-plugin/marketplace.json` on 2026-11-06. Three plugins are **disabled on purpose** (`false` in settings):
+All IDs were checked against each repo's `.claude-plugin/marketplace.json` on 2026-11-06. Four plugins are **disabled on purpose** (`false` in settings):
 
 | Plugin | Why it's off |
 |---|---|
 | `cc-skills-golang@samber` | All 46 of its skills pre-approve `Bash(go:*)` and `Bash(git:*)`. Five are vendored here with that pre-approval stripped. |
 | `terraform@hashicorp` | 16 skills; 3 are vendored here instead (style guide, test, refactor-module). |
 | `posthog@posthog` | 170 skills. Enable it only in projects that use PostHog, via that repo's `.claude/settings.json`: `{"enabledPlugins": {"posthog@posthog": true}}` |
+| `andrej-karpathy-skills@karpathy-skills` | Its four rules (think first, keep it simple, surgical changes, verify) repeat the global CLAUDE.md, so they cost context in every session for nothing new. |
 
 ## MCP servers (run by hand)
 

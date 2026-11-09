@@ -14,6 +14,7 @@ memfile() { # memfile <path> <name> [type]
   printf -- '---\nname: %s\ndescription: d\nmetadata:\n  type: %s\n---\nbody\n' "$2" "${3:-user}" >"$1"
 }
 jqe() { jq -e "$@" >/dev/null; }
+recall() { printf '%s' "$1" | HOME="$H" AGENTS_VAULT="$TMP/rv" "$HOOKS/memory-recall.sh"; }
 run_link() { printf '%s' "$1" | HOME="$H" "$HOOKS/memory-to-vault.sh"; }
 
 test_lint() {
@@ -69,12 +70,28 @@ test_vault_commit() {
   check "commit: no repo is a no-op" sh -c 'printf "{}" | AGENTS_VAULT=/nonexistent "$1"' _ "$HOOKS/vault-commit.sh"
 }
 
+# A fake `hermes` that keeps each config key in a file, so the installer's merge is exercised.
+fake_hermes() {
+  mkdir -p "$TMP/hbin" "$TMP/hcfg"
+  cat >"$TMP/hbin/hermes" <<EOF
+#!/bin/sh
+[ "\$1" = config ] || exit 1
+case "\$2" in
+  get) [ "\$3" = --json ] || exit 1; cat "$TMP/hcfg/\$4" 2>/dev/null || exit 1 ;;
+  set) printf '%s' "\$4" >"$TMP/hcfg/\$3" ;;
+esac
+EOF
+  chmod +x "$TMP/hbin/hermes"
+  printf '[{"command":"/other.sh"}]' >"$TMP/hcfg/hooks.pre_llm_call"
+}
+
 test_installer() {
   local i="$TMP/ihome"
+  fake_hermes
   mkdir -p "$i/.cursor" "$i/.codex" "$i/.config/opencode"
   printf '{"mcpServers":{"keep":{"command":"x"}}}\n' >"$i/.cursor/mcp.json"
   for _ in 1 2; do
-    HOME="$i" AGENTS_VAULT="$i/vault" AGENTS_NO_LAUNCHD=1 "$ROOT/scripts/install-memory.sh" >/dev/null 2>&1
+    PATH="$TMP/hbin:$PATH" HOME="$i" AGENTS_VAULT="$i/vault" AGENTS_NO_LAUNCHD=1 "$ROOT/scripts/install-memory.sh" >/dev/null 2>&1
   done
   check "install: vault AGENTS.md written" test -f "$i/vault/AGENTS.md"
   check "install: vault is a git repo" test -d "$i/vault/.git"
@@ -83,10 +100,28 @@ test_installer() {
   check "install: opencode server added" jqe '.mcp["obsidian-memory"].type == "local"' "$i/.config/opencode/opencode.jsonc"
   check "install: codex table written once" test "$(grep -c '^\[mcp_servers.obsidian-memory\]' "$i/.codex/config.toml")" = 1
   check "install: codex pointer linked" test -L "$i/.codex/AGENTS.md"
+  check "install: hermes mcp server set" jqe '.args[-1] | endswith("/claude-memory")' "$TMP/hcfg/mcp_servers.obsidian-memory"
+  check "install: hermes recall hook added once, others kept" jqe 'length == 2 and .[0].command == "/other.sh" and (.[1].command | endswith("/memory-recall.sh"))' "$TMP/hcfg/hooks.pre_llm_call"
+  check "install: hermes session-end commit hook" jqe '.[0].command | endswith("/vault-commit.sh")' "$TMP/hcfg/hooks.on_session_end"
   check "install: absent harness skipped" test ! -e "$i/Library/Application Support/Claude/claude_desktop_config.json"
 }
 
+test_recall() {
+  local out
+  mkdir -p "$TMP/rv/claude-memory/_global" "$TMP/rv/claude-memory/proj"
+  echo '- [G](g.md) — global fact' >"$TMP/rv/claude-memory/_global/MEMORY.md"
+  echo '- [P](p.md) — project fact' >"$TMP/rv/claude-memory/proj/MEMORY.md"
+  out=$(recall "$(jq -nc --arg c "$H/dev/github/proj" '{cwd:$c,extra:{is_first_turn:true}}')")
+  check "recall: first turn has global index" jqe '.context | test("global fact")' <<<"$out"
+  check "recall: first turn has project index" jqe '.context | test("project fact")' <<<"$out"
+  out=$(recall '{"extra":{"is_first_turn":false}}')
+  check "recall: later turns inject nothing" test "$out" = '{}'
+  out=$(recall "$(jq -nc --arg c "$H/dev/github/other" '{cwd:$c}')")
+  check "recall: new project told where to save" jqe '.context | test("claude-memory/other/")' <<<"$out"
+}
+
 test_lint
+test_recall
 test_link_hook
 test_vault_commit
 test_installer

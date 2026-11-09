@@ -1,4 +1,6 @@
 # Merge into ~/.hermes/config.yaml (don't replace it).
+# The shared-memory pieces (obsidian-memory MCP server, pre_llm_call and
+# on_session_end hooks) are added by scripts/install-memory.sh, not here.
 #
 # External dirs are NOT a write-protection boundary: Hermes' skill_manage can
 # patch skills in place wherever they live. scripts/install.sh runs

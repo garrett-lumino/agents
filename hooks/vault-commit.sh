@@ -19,6 +19,8 @@ if [ -n "$transcript" ]; then
   source=$(basename -- "$(dirname -- "$transcript")")
   source=${source#"$(printf '%s' "$HOME/dev/github/" | tr '/' '-')"}
   source=${source#-}
+elif cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) && [ -n "$cwd" ]; then
+  source=$(basename -- "$cwd") # harnesses without a transcript path (Hermes)
 fi
 
 vgit add -A &&

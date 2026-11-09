@@ -55,6 +55,7 @@ Every AI tool shares one long-term memory: the Obsidian vault at `~/dev/obsidian
 |---|---|
 | Claude Code | `~/.claude/projects/*/memory` are symlinks into `claude-memory/<project>`. SessionStart `memory-to-vault.sh` links new projects, regenerates `Claude Memory.md`, injects the `_global` index and the `memory-lint.sh` findings, and asks to save memories after a compaction. SessionEnd `vault-commit.sh` commits. |
 | Codex, opencode | Global `AGENTS.md` symlinked to `memory/harness-AGENTS.md`, plus the `obsidian-memory` MCP server. |
+| Hermes | No global `AGENTS.md` (`SOUL.md` is its identity), so `memory-recall.sh` runs as a `pre_llm_call` shell hook and injects the vault rules, the `_global` index and the project's index on the first turn. `on_session_end` runs `vault-commit.sh`, and the `obsidian-memory` MCP server goes in `mcp_servers`. All set through `hermes config set`. Hermes asks once to approve each new hook. |
 | Cursor, Claude Desktop | The `obsidian-memory` MCP server (`@modelcontextprotocol/server-filesystem`, pinned, `claude-memory/` only so no tool can write the vault's `.git`). Cursor's global rules live in app settings: paste `memory/harness-AGENTS.md` there. |
 | Any tool | A launchd job (`com.agents.vault-commit`) runs `vault-commit.sh` every 15 minutes, so writes from tools without session hooks are versioned too. |
 

@@ -76,14 +76,30 @@ push_dest() {
   printf '%s' "$ref"
 }
 
+# Repos (owner/name of origin) whose protected branches may take direct pushes.
+DIRECT_PUSH_REPOS="${AGENTS_DIRECT_PUSH_REPOS:-garrett-lumino/agents}"
+
+direct_push_allowed() {
+  local url repo
+  url=$(git -C "$1" remote get-url origin 2>/dev/null) || return 1
+  repo=$(printf '%s' "$url" | sed -E 's#\.git$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')
+  case " $DIRECT_PUSH_REPOS " in *" $repo "*) return 0 ;; esac
+  return 1
+}
+
 # Direct pushes to main/master/develop go through a PR instead.
 check_push_target() {
-  local seg="$1" cwd="$2" words w seen=0 pos=0 tags=0 dest
+  local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
   set -f
   read -r -a words <<<"$seg"
   set +f
   for w in "${words[@]}"; do
-    [ "$seen" = 1 ] || { [ "$w" = push ] && seen=1; continue; }
+    if [ "$seen" = 0 ]; then
+      [ "$prev" = -C ] && cwd="${w/#\~/$HOME}" # `git -C <dir>` names the repo
+      [ "$w" = push ] && { seen=1; direct_push_allowed "$cwd" && return 0; }
+      prev=$w
+      continue
+    fi
     case "$w" in
       --tags) tags=1 ;;
       -*) ;;

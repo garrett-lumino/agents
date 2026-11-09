@@ -65,6 +65,19 @@ test_guard_protected_push() {
   blocked 'git push origin HEAD:refs/heads/master' "$repo"
 }
 
+# The agents repo itself may take direct pushes to main; nothing else may.
+test_guard_direct_push_repo() {
+  local own other
+  own=$(new_repo own) && git -C "$own" remote add origin git@github.com:garrett-lumino/agents.git
+  other=$(new_repo other) && git -C "$other" remote add origin https://github.com/Lumino-Devs/lumino-services.git
+  allowed 'git push origin main' "$own"
+  allowed 'git push' "$own"
+  allowed "git -C $own push origin main" "$other"   # -C names the repo, not the cwd
+  blocked 'git push origin main' "$other"
+  blocked "git -C $other push origin main" "$own"
+  blocked "cd $own && git -C $other push origin develop" "$own"
+}
+
 sql_tool_json() { jq -nc --arg q "$1" '{tool_name:"mcp__claude_ai_Supabase__execute_sql",tool_input:{project_id:"p",query:$q}}'; }
 
 test_guard_sql_mcp() {
@@ -141,6 +154,7 @@ test_guard_sql
 test_guard_terraform_git
 test_guard_reset
 test_guard_protected_push
+test_guard_direct_push_repo
 test_guard_sql_mcp
 test_guard_aws
 test_stop_gate

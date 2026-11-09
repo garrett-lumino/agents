@@ -69,6 +69,22 @@ test_guard_protected_push() {
   blocked 'git push --all origin' "$repo"
   blocked 'git push origin :develop' "$repo"
   blocked 'git push origin --delete main' "$repo"
+  # Destinations are read the way git reads them, and anything unreadable is refused.
+  blocked 'git push origin HEAD:heads/main' "$repo"            # git expands to refs/heads/main
+  blocked "git push origin 'HEAD:main'" "$repo"                 # quoted
+  blocked 'git push origin "HEAD:develop"' "$repo"
+  blocked 'git push origin refs/heads/*:refs/heads/*' "$repo"   # wildcard
+  blocked 'git push origin :' "$repo"                           # all matching branches
+  # Options: only a known list, spelled out; git accepts abbreviations of the rest.
+  blocked 'git push --mirr origin' "$repo"
+  blocked 'git push --al origin' "$repo"
+  blocked 'git -c remote.origin.mirror=true push origin' "$repo"
+  git -C "$repo" config remote.origin.push refs/heads/feat/ln-1-x:refs/heads/main
+  blocked 'git push origin' "$repo"                             # configured push refspec
+  git -C "$repo" config --unset remote.origin.push
+  allowed 'git push origin --delete feat/old' "$repo"
+  allowed 'git push --no-verify -u origin HEAD:feat/ln-1-x' "$repo"
+  allowed 'git push origin v1.2.3' "$repo"
 }
 
 # The agents repo itself may take direct pushes to main; nothing else may.

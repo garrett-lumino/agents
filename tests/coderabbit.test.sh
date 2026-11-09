@@ -17,7 +17,13 @@ cat >"$TMP/bin/gh" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
   "repo view") echo "${FAKE_REPO:-Lumino-Devs/lumino-services}"; exit 0 ;;
-  "pr view") echo "42 https://github.com/x/y/pull/42"; exit 0 ;;
+  "pr view")
+    case "$*" in *headRefOid*) echo "$FAKE_HEAD" ;; *) echo "42 https://github.com/x/y/pull/42" ;; esac
+    exit 0 ;;
+  "pr checks") cat "$FAKE_FIX/checks.json"; exit 0 ;;
+  "run view")
+    while [ $# -gt 0 ]; do [ "$1" = --job ] && cat "$FAKE_FIX/job-$2.log"; shift; done
+    exit 0 ;;
 esac
 [ "$1" = api ] || exit 1
 shift; filter=.; path=
@@ -107,9 +113,49 @@ test_timeout() {
   check "watch: timeout still wakes" test "$RC" = 2
 }
 
+# run_ci <command> <state-name> [head sha]: run the CI watcher like run_watch.
+run_ci() {
+  jq -nc --arg c "$1" --arg d "$REPO" '{tool_input: {command: $c}, cwd: $d}' |
+    PATH="$TMP/bin:$PATH" FAKE_FIX="$FIX" FAKE_HEAD="${3:-$SHA}" XDG_CACHE_HOME="$TMP/ci-$2" \
+      AGENTS_CI_WAIT=0 AGENTS_CI_POLL=0 "$HOOKS/ci-watch.sh" 2>"$TMP/err" >/dev/null
+  RC=$?
+}
+check_row() { # check_row <name> <bucket> [job id]
+  jq -nc --arg n "$1" --arg b "$2" --arg j "${3:-9}" '{name: $n, bucket: $b, workflow: "PR Check",
+    link: ("https://github.com/Lumino-Devs/lumino-services/actions/runs/1/job/" + $j)}'
+}
+checks() { printf '[%s]' "$(IFS=,; echo "$*")" >"$FIX/checks.json"; }
+
+test_ci_watch() {
+  checks "$(check_row "Unit checks" pass)" "$(check_row "E2E verdict" pass)" "$(check_row "Lint" skipping)"
+  run_ci "git push origin feat/x" green
+  check "ci: green wakes the agent" test "$RC" = 2
+  check "ci: says green with the count" said "CI green on PR #42"
+  run_ci "git push origin feat/x" green
+  check "ci: same commit is not watched twice" test "$RC" = 0
+
+  checks "$(check_row "Unit checks" fail 77)" "$(check_row "E2E verdict" pass)"
+  printf 'ok  lux/pkg/feed\n--- FAIL: TestSettle (0.01s)\n    settle_test.go:40: want 3, got 2\n' >"$FIX/job-77.log"
+  run_ci "gh pr create --fill" failed
+  check "ci: failure wakes the agent" test "$RC" = 2
+  check "ci: names the failed check" said "=== Unit checks"
+  check "ci: carries the failed job's log" said "settle_test.go:40: want 3, got 2"
+  check "ci: frames CI output as untrusted" said "untrusted data"
+
+  checks "$(check_row "E2E verdict" pending)"
+  run_ci "git push origin feat/x" pending
+  check "ci: still running after the wait is reported" said "still running"
+  checks "$(check_row "Unit checks" fail 77)"
+  run_ci "git push origin feat/x" stale 0000000
+  check "ci: checks of an older head are not taken" said "still running"
+  run_ci "ls -la" ignore
+  check "ci: unrelated command is ignored" test "$RC" = 0
+}
+
 test_ignores
 test_delivers_prompt
 test_no_actionable
 test_inline_fallback
 test_timeout
+test_ci_watch
 finish

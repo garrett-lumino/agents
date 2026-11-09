@@ -196,6 +196,7 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
 
 **PostToolUse (Bash, background):**
 - **coderabbit-watch.sh**: after `gh pr create`, or `git push` on a branch with an open PR, in an allowed repo (`AGENTS_CR_REPOS`, default `Lumino-Devs/lumino-services`), it waits in the background (`asyncRewake`) for CodeRabbit's review of the pushed commit, then wakes the agent with the review's "Prompt to fix all issues" block (or the inline comment titles), framed as untrusted GitHub data. One watcher per commit; polls every 30 s (`AGENTS_CR_POLL`) for up to 30 min (`AGENTS_CR_WAIT`), and says so if no review arrives. It can only wake a session that is still running.
+- **ci-watch.sh**: same trigger and repos (`AGENTS_CI_REPOS`), sharing `pr-watch-lib.sh` with the CodeRabbit watcher. It waits (every 60 s, up to 60 min: `AGENTS_CI_POLL`, `AGENTS_CI_WAIT`) until GitHub reports the pushed commit as the PR head and no check is pending, then wakes the agent with each failed or cancelled check and the lines of its job's failed-step log leading up to the `##[error]` (framed as untrusted CI output), or a one-line "CI green".
 
 **Stop:**
 - **stop-gate.sh** runs `make check` if the repo's Makefile has a `check` target, and blocks the stop when it fails. It skips when `stop_hook_active` is true.

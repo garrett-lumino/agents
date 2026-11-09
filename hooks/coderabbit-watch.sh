@@ -7,23 +7,13 @@ set -u
 REPOS="${AGENTS_CR_REPOS:-Lumino-Devs/lumino-services}"
 POLL="${AGENTS_CR_POLL:-30}"
 WAIT="${AGENTS_CR_WAIT:-1800}"
-STATE="${XDG_CACHE_HOME:-$HOME/.cache}/agents/coderabbit"
 BOT="coderabbitai[bot]"
 MAX_CHARS=12000
+# shellcheck source=hooks/pr-watch-lib.sh
+. "$(dirname "$0")/pr-watch-lib.sh"
 
-input=$(cat)
-cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null)
-case "$cmd" in *"gh pr create"* | *"git push"*) ;; *) exit 0 ;; esac
-cd "$(jq -r '.cwd // empty' <<<"$input")" 2>/dev/null || exit 0
-
-repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || exit 0
-case " $REPOS " in *" $repo "*) ;; *) exit 0 ;; esac
-pr=$(gh pr view --json number,url -q '"\(.number) \(.url)"' 2>/dev/null) || exit 0
-number=${pr%% *} url=${pr#* }
-sha=$(git rev-parse HEAD 2>/dev/null) || exit 0
-
-# One watcher per commit: a second push of the same commit, or a retry, adds nothing.
-mkdir -p "$STATE" && mkdir "$STATE/${repo//\//_}-$number-$sha" 2>/dev/null || exit 0
+pr_watch_target "$(cat)" "$REPOS" coderabbit || exit 0
+repo=$PW_REPO number=$PW_NUMBER url=$PW_URL sha=$PW_SHA
 
 # latest_review: id and body of CodeRabbit's main review of $sha, as JSON, or nothing.
 latest_review() {
@@ -43,10 +33,7 @@ inline_titles() {
     --jq '.[] | "- \(.path):\(.line // .original_line // "?") — \((.body | capture("\\*\\*(?<t>[^*]{8,})\\*\\*").t) // "see comment")"' 2>/dev/null
 }
 
-wake() {
-  printf '%s\n' "$1" | head -c "$MAX_CHARS" >&2
-  exit 2
-}
+wake() { pw_wake "$1" "$MAX_CHARS"; }
 
 deadline=$((SECONDS + WAIT))
 while :; do

@@ -42,7 +42,8 @@
         "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "$HOME/agents/hooks/tf-plan-summary.sh", "timeout": 10 },
-          { "type": "command", "command": "$HOME/agents/hooks/coderabbit-watch.sh", "timeout": 2100, "asyncRewake": true }
+          { "type": "command", "command": "$HOME/agents/hooks/coderabbit-watch.sh", "timeout": 2100, "asyncRewake": true },
+          { "type": "command", "command": "$HOME/agents/hooks/ci-watch.sh", "timeout": 3900, "asyncRewake": true }
         ]
       }
     ],

@@ -88,6 +88,16 @@ test_guard_direct_push_repo() {
   blocked "git -C $own -C $other push origin main" "$other"                # -C stacks
   blocked "git -c remote.origin.pushurl=$work push origin main" "$own"     # config override
   blocked 'git push --repo=work main' "$own"
+  # Only a single plain `git [-C dir] push [flags] [remote [refspec...]]` is exempt.
+  allowed 'git push -u origin main' "$own"
+  blocked "\"c\"d $other && git push origin main" "$own"                     # quoted cd
+  blocked "git remote set-url --push origin $work && git push origin main" "$own"
+  blocked 'git push --receive-pack git-receive-pack origin main' "$own"      # option value read as remote
+  blocked 'git push --exec /tmp/x origin main' "$own"
+  blocked 'HOME=/tmp/x git push origin main' "$own"                          # env prefix
+  blocked 'env GIT_DIR=x git push origin main' "$own"
+  blocked 'git push origin +HEAD:main' "$own"                                # forced refspec
+  blocked 'git push origin main 2>&1' "$own"                                 # anything extra
   git -C "$own" remote set-url --push origin "$work"
   blocked 'git push origin main' "$own"                                    # push URL differs from fetch
   git -C "$own" config --unset remote.origin.pushurl

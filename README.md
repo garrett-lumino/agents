@@ -149,7 +149,7 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
 - **guard-bash.sh** blocks:
   - recursive `rm` on `/`, a top-level directory, `~` or `$HOME`
   - any force push, including `--force-with-lease`
-  - direct pushes to `main`, `master` or `develop` (push a branch and open a PR), except to GitHub repos listed in `AGENTS_DIRECT_PUSH_REPOS` (default `garrett-lumino/agents`, this repo). The exemption applies only when the push certainly lands there: a named remote (given, or the branch's push/upstream remote) whose every push URL, after `insteadOf` rewrites, is exactly `github.com/<owner>/<name>`; and no `cd`/`pushd`, `--git-dir`/`--work-tree`, `GIT_DIR`/`GIT_WORK_TREE`/`GIT_CONFIG`, `-c`/`--config-env`, `--repo`, stacked `-C`, `$` or backtick anywhere in the command. `git -C <dir>` is judged by `<dir>`
+  - direct pushes to `main`, `master` or `develop` (push a branch and open a PR), except to GitHub repos listed in `AGENTS_DIRECT_PUSH_REPOS` (default `garrett-lumino/agents`, this repo). The exemption is an allowlist, not a denylist: the whole command must be exactly `git [-C dir] push [-u|--set-upstream|--no-verify|--follow-tags|--tags|-v|-q|-n] [remote [refspec...]]` (nothing chained, no quotes, variables, env prefixes, value-taking options or `+` refspecs), and the remote (given, or the branch's push/upstream remote) must have every push URL, after `insteadOf` rewrites, exactly `github.com/<owner>/<name>` on the list. Anything else gets the normal rule. `git -C <dir>` is judged by `<dir>`
   - `git reset --hard` on `main`, `master` or `develop`
   - `terraform`/`tofu`/`terragrunt` `apply` and `destroy`
   - SQL `DROP <object>`, `TRUNCATE` and `DELETE FROM`

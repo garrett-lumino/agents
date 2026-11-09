@@ -90,28 +90,27 @@ is_listed_repo() {
   return 1
 }
 
-# push_target <seg> <cwd>: print "<repo dir>\t<remote>" for a plain `git [-C dir] push [remote]`.
-# Fails for any form whose destination it can't be sure of.
+# The only command shape the exemption accepts, whole: `git [-C dir] push [flags] [remote [refspec...]]`,
+# with no chaining, quoting, variables, env prefixes, value-taking options or forced (+) refspecs.
+PUSH_FLAGS='(-u|--set-upstream|--no-verify|--follow-tags|--tags|-v|--verbose|-q|--quiet|-n|--dry-run)'
+PLAIN_PUSH="^[[:space:]]*git( +-C +[A-Za-z0-9._/~-]+)? +push( +$PUSH_FLAGS)*( +[A-Za-z0-9._-]+( +[A-Za-z0-9._/:@^~-]+)*)?[[:space:]]*$"
+
+# push_target <cmd> <cwd>: print "<repo dir>\t<remote>" for a command matching PLAIN_PUSH.
 push_target() {
-  local seg="$1" dir="$2" words w prev="" seen=0 dirs=0 remote="" branch
-  set -f
-  read -r -a words <<<"$seg"
-  set +f
+  local dir="$2" words w prev="" seen=0 remote="" branch
+  [[ "$1" =~ $PLAIN_PUSH ]] || return 1
+  read -r -a words <<<"$1"
   for w in "${words[@]}"; do
     if [ "$seen" = 0 ]; then
-      case "$prev" in
-        -C) dirs=$((dirs + 1)) && case "$w" in /*) dir=$w ;; "~"*) dir="$HOME${w#\~}" ;; *) dir="$dir/$w" ;; esac ;;
-        -c) return 1 ;;
-      esac
+      [ "$prev" = -C ] && case "$w" in /*) dir=$w ;; "~"*) dir="$HOME${w#\~}" ;; *) dir="$dir/$w" ;; esac
       [ "$w" = push ] && seen=1
       prev=$w
       continue
     fi
-    case "$w" in --repo* | -o | --push-option*) return 1 ;; -*) continue ;; esac
+    case "$w" in -*) continue ;; esac
     remote=$w
     break
   done
-  [ "$seen" = 1 ] && [ "$dirs" -le 1 ] || return 1
   if [ -z "$remote" ]; then
     branch=$(current_branch "$dir") || return 1
     remote=$(git -C "$dir" config "branch.$branch.pushRemote" || git -C "$dir" config remote.pushDefault ||
@@ -120,12 +119,11 @@ push_target() {
   printf '%s\t%s' "$dir" "$remote"
 }
 
-# push_exempt <seg> <cwd> <cmd>: true only when the push certainly lands on a listed repo.
+# push_exempt <cwd> <cmd>: true only when the whole command is one plain push that
+# certainly lands on a listed repo.
 push_exempt() {
   local target dir remote urls url repo
-  # Anything that can move or rewrite the repo git acts on voids the exemption.
-  printf '%s' "$3" | grep -Eq '(^|[;&|[:space:](])(cd|pushd)([[:space:]]|$)|--git-dir|--work-tree|--config-env|GIT_DIR|GIT_WORK_TREE|GIT_CONFIG|[$`]' && return 1
-  target=$(push_target "$1" "$2") || return 1
+  target=$(push_target "$2" "$1") || return 1
   dir=${target%%$'\t'*} remote=${target#*$'\t'}
   # A named remote only (a raw URL is not one); every push URL must be a listed repo.
   urls=$(git -C "$dir" remote get-url --push --all "$remote" 2>/dev/null) && [ -n "$urls" ] || return 1
@@ -139,7 +137,7 @@ push_exempt() {
 # Direct pushes to main/master/develop go through a PR instead.
 check_push_target() {
   local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
-  push_exempt "$seg" "$cwd" "$3" && return 0
+  push_exempt "$cwd" "$3" && return 0
   set -f
   read -r -a words <<<"$seg"
   set +f

@@ -82,6 +82,15 @@ test_guard_protected_push() {
   git -C "$repo" config remote.origin.push refs/heads/feat/ln-1-x:refs/heads/main
   blocked 'git push origin' "$repo"                             # configured push refspec
   git -C "$repo" config --unset remote.origin.push
+  blocked 'git config remote.origin.push refs/heads/feat/ln-1-x:refs/heads/main; git push origin' "$repo"
+  blocked 'git remote set-url --push origin x && git push origin feat/ln-1-x' "$repo"
+  blocked 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true git push origin' "$repo"
+  blocked 'env GIT_DIR=x git push origin feat/ln-1-x' "$repo"
+  git -C "$repo" checkout -q main
+  blocked 'git push origin @' "$repo"                           # @ is HEAD
+  allowed 'git push origin @:refs/heads/feat/x' "$repo"         # explicit, unprotected destination
+  git -C "$repo" checkout -q feat/ln-1-x
+  blocked 'git push origin main' "$repo"                        # no-colon source names its own destination
   allowed 'git push origin --delete feat/old' "$repo"
   allowed 'git push --no-verify -u origin HEAD:feat/ln-1-x' "$repo"
   allowed 'git push origin v1.2.3' "$repo"

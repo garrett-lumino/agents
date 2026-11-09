@@ -10,13 +10,20 @@ is_protected_branch() {
 current_branch() { git -C "${1:-.}" symbolic-ref --short HEAD 2>/dev/null; }
 
 # Branch a refspec lands on, read the way git reads it:
-# "+HEAD:refs/heads/main" -> main, "HEAD:heads/main" -> main, "HEAD" -> the current branch.
+# "+HEAD:refs/heads/main" -> main, "HEAD:heads/main" -> main, "HEAD" or "@" -> the current branch.
 push_dest() {
-  local ref="${1#+}" cwd="$2"
-  ref="${ref##*:}"
+  local spec="${1#+}" cwd="$2" ref full
+  if [[ "$spec" == *:* ]]; then
+    ref="${spec##*:}"
+  else
+    # No destination: git pushes the source to the branch of the same name (HEAD, @ -> current).
+    ref=$spec
+    full=$(git -C "$cwd" rev-parse --symbolic-full-name "$spec" 2>/dev/null) &&
+      [[ "$full" == refs/heads/* ]] && ref=${full#refs/heads/}
+  fi
   ref="${ref#refs/heads/}"
   ref="${ref#heads/}"
-  [ "$ref" = HEAD ] && ref=$(current_branch "$cwd")
+  case "$ref" in HEAD | @) ref=$(current_branch "$cwd") ;; esac
   printf '%s' "$ref"
 }
 
@@ -99,6 +106,9 @@ push_exempt() {
 check_push_target() {
   local seg="$1" cwd="$2" words w prev="" seen=0 pos=0 tags=0 dest
   push_exempt "$cwd" "$3" && return 0
+  # Config written earlier in the same command would not be seen by the checks below.
+  printf '%s' "$3" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(config|remote)([[:space:]]|$)|\.git/config|\.gitconfig' &&
+    deny "this command changes git config and pushes; run them as separate commands" "$seg"
   set -f
   read -r -a words <<<"$seg"
   set +f
@@ -106,6 +116,8 @@ check_push_target() {
     if [ "$seen" = 0 ]; then
       [ "$prev" = -C ] && cwd="${w/#\~/$HOME}" # `git -C <dir>` names the repo for the branch checks
       case "$w" in -c* | --config-env*) deny "git -c on a push (config can change what is pushed)" "$seg" ;; esac
+      [ "$w" = env ] || [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] &&
+        deny "environment assignment on a push (GIT_CONFIG_*, GIT_DIR ... change what is pushed)" "$seg"
       [ "$w" = push ] && seen=1
       prev=$w
       continue

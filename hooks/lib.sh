@@ -36,15 +36,17 @@ json_get() {
 # strip_heredocs <cmd>: a message-only command with its message body removed, so a commit
 # message or PR body isn't read as commands. The whole command must be one line that is
 # exactly `[git add <paths> && ]git [-C d] commit ... -F|--file - <<WORD` or
-# `gh pr|issue create|edit|comment|review ... --body-file|-F - <<WORD` (one `<<`, a plain or
-# plainly quoted WORD, nothing after it), then the body, then WORD, then nothing. Any other
-# command is returned unchanged, every heredoc body in it read. SQL checks skip this.
+# `gh pr|issue create|edit|comment|review ... --body-file|-F - <<WORD` (one `<<`; WORD quoted,
+# 'WORD' or "WORD", which stops expansion; nothing after it), then the body, then WORD, then
+# nothing. Any other command is returned unchanged, every heredoc body in it read. SQL checks
+# skip this.
 strip_heredocs() {
   printf '%s\n' "$1" | awk '
     BEGIN {
       arg = "([ \t]+(\"[^\"]*\"|\047[^\047]*\047|[^ \t<>|;&\047\"$`]+))*"
       plain = "([ \t]+[^ \t<>|;&\047\"$`]+)*"
-      word = "(\047[A-Za-z_][A-Za-z0-9_]*\047|\"[A-Za-z_][A-Za-z0-9_]*\"|[A-Za-z_][A-Za-z0-9_]*)"
+      # Quoted WORD only: with <<WORD (unquoted) the shell expands $(...) and `...` in the body.
+      word = "(\047[A-Za-z_][A-Za-z0-9_]*\047|\"[A-Za-z_][A-Za-z0-9_]*\")"
       tail = "[ \t]+-" arg "[ \t]+<<-?[ \t]*" word "[ \t]*$"
       add = "([ \t]*git[ \t]+add" plain "[ \t]*&&)*"
       gitmsg = "^" add "[ \t]*git([ \t]+-C[ \t]+[^ \t<>|;&\047\"$`]+)?[ \t]+commit" arg "[ \t]+(-F|--file)" tail

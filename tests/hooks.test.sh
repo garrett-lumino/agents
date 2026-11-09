@@ -101,6 +101,10 @@ test_guard_protected_push() {
   blocked "$(printf 'bash <<X; git commit -F - <<EOF\ngit push origin main\nX\nmsg\nEOF')" "$repo"   # two heredocs
   blocked "$(printf 'cat <<OUTER | bash\ngit commit -F - <<EOF\nx\nEOF\ngit push origin main\nOUTER')" "$repo"  # nested
   blocked "$(printf 'git commit -F - -- a <<EOF\nmsg\nEOF\ngit push origin main')" "$repo"   # commands after the body
+  blocked "$(printf 'git commit -F - -- a <<EOF\n$(git push origin main)\nEOF')" "$repo"     # unquoted: the body expands
+  blocked 'echo $(git push origin main)' "$repo"                                         # command substitution
+  blocked 'echo `git push origin main`' "$repo"
+  blocked '(git push origin main)' "$repo"                                               # subshell
   allowed "$(printf 'git add -- a && git commit -F - -- a <<'"'"'EOF'"'"'\nnote: git push origin main later\nEOF')" "$repo"
   allowed "$(printf 'gh pr create --title \"LN-1: x\" --body-file - <<'"'"'EOF'"'"'\nthen git push origin main\nEOF')" "$repo"
   # A push is its own command: commit hooks and fetch/log/diff options can run code.

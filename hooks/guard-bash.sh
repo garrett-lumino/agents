@@ -143,14 +143,16 @@ main() {
   [ -n "$cmd" ] || exit 0
   check_sql "$cmd" # reads heredoc bodies too: SQL is often fed to psql that way
   cmd=$(strip_heredocs "$cmd")
-  # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
+  # Segments end at ; & | and start at $( ` ( so a command inside a substitution or subshell
+  # is checked like any other.
+  # shellcheck disable=SC2020  # per-char on purpose: ; & | ` ( each end a segment
   while IFS= read -r seg; do
     check_rm "$seg"
     check_git "$seg" "$cwd" "$cmd"
     check_terraform "$seg"
     check_kubectl "$seg" "$cwd" "$cmd"
     check_aws "$seg"
-  done < <(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')
+  done < <(printf '%s\n' "$cmd" | tr ';&|`(' '\n\n\n\n\n' | sed 's/\$$//')
   exit 0
 }
 

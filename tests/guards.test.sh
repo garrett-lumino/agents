@@ -22,7 +22,7 @@ test_secret_print_guard() {
   bash_case 2 $h 'doppler secrets get STRIPE_KEY --only-names'
   bash_case 0 $h 'kubectl get pods -l app=secret-rotator -o yaml'
   bash_case 0 $h 'doppler secrets --only-names'
-  bash_case 0 $h "$(printf 'git commit -F - -- a <<EOF\ndocs: never run doppler secrets get X --plain\nEOF')"   # message text
+  bash_case 0 $h "$(printf 'git commit -F - -- a <<'"'"'EOF'"'"'\ndocs: never run doppler secrets get X --plain\nEOF')"   # message text
   bash_case 0 $h 'doppler run -- pnpm dev'
   bash_case 0 $h 'doppler secrets download --format env'          # writes a file, prints nothing
   bash_case 0 $h 'aws secretsmanager list-secrets'

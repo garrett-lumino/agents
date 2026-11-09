@@ -127,6 +127,16 @@ test_secret_scan_commit() {
   git -C "$r" add creds.env
   bash_case 2 $h 'git commit -m "x"' "$r"                                        # staged
   bash_case 0 $h 'git status' "$r"
+  # The repo the commit really runs in: a cd before it, and forms that can't be followed.
+  local clean
+  clean=$(new_repo leakclean)
+  bash_case 2 $h "cd $r && git commit -m x" "$clean"
+  bash_case 2 $h "git --git-dir=$r/.git commit -m x" "$clean"
+  bash_case 2 $h 'cd "$X" && git commit -m x' "$clean"
+  # A file whose name has a newline is still scanned.
+  git -C "$r" reset -q
+  mv "$r/creds.env" "$r/$(printf 'a\nb.env')"
+  bash_case 2 $h 'git add -A && git commit -m x' "$r"
   expect 0 "secret-scan: gitleaks missing warns and allows" $h \
     "$(jq -nc --arg d "$r" '{tool_name:"Bash",cwd:$d,tool_input:{command:"git commit -m x"}}')" "$(jq_only_path)"
 }

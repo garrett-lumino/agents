@@ -14,10 +14,10 @@ Per-project config (boundary maps, linter configs) does **not** live here. Copy 
 | `skills/` | 13 self-written skills plus 20 vendored at pinned SHAs. `SOURCES.md` records provenance, review notes, local patches, and rejections. |
 | `templates/project/` | Go/TS service starter: `AGENTS.md`, `CLAUDE.md`, `.golangci.yml`, `.go-arch-lint.yml`, `Makefile` (check, bench, escape, explain), `docs/explain/`. |
 | `templates/ml-project/` | uv Python ML starter: `pyproject.toml`, `Makefile`, `evals/`, `.ml/` gate docs, `.gitignore`, `AGENTS.md`. |
-| `hermes/config.snippet.yaml` | Points Hermes at the shared skills and the MLflow MCP server. |
+| `hermes/plugins/agents-hooks/` | Hermes plugin that runs the hooks in `claude/settings.json` inside Hermes. See [Hermes Agent](#hermes-agent). |
 | `memory/` | Shared AI memory vault for every harness: the vault guide (`vault-AGENTS.md`), the pointer other harnesses load (`harness-AGENTS.md`), the `obsidian-memory` MCP server definition, the vault `.gitignore`. See [Shared memory](#shared-memory). |
-| `scripts/` | `install.sh`, `install-memory.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
-| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `coderabbit`, `guards`, `memory`, `ml-hooks` and `skills` suites. |
+| `scripts/` | `install.sh`, `install-memory.sh`, `install-hermes.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
+| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `coderabbit`, `guards`, `memory`, `ml-hooks`, `skills` and `hermes-plugin` suites. |
 
 Requires `bash`, `jq` and `git`. Formatters and linters (goimports, gofumpt, golangci-lint, prettier, eslint, ruff, terraform) are optional: hooks skip any that aren't installed. The ML launch gate is the exception: without `jq` it fails closed.
 
@@ -133,11 +133,26 @@ Tools the templates expect:
 
 ## Hermes Agent
 
-1. Merge `hermes/config.snippet.yaml` into `~/.hermes/config.yaml`. It sets `skills.external_dirs: [~/agents/skills]` and adds the MLflow MCP server.
-2. `import-agent` now ships as a plugin: `hermes plugins install agent-importers`.
-3. `hermes import-agent claude-code`. This imports the **whole** hooks block of `~/.claude/settings.json`, including hooks that didn't come from this repo.
-4. `hermes hooks list` to review the imported hooks and approve them. Imported hooks start out not allowlisted. `hermes hooks doctor` checks them.
-5. After changing hooks: `hermes import-agent claude-code --sync`.
+`install.sh` runs `scripts/install-hermes.sh`, which skips itself when `hermes` isn't installed. Through `hermes config set`, it:
+1. adds `~/agents/skills` to `skills.external_dirs`, keeping any other dirs;
+2. adds the MLflow MCP server as `mcp_servers.mlflow`;
+3. links `hermes/plugins/agents-hooks` into `~/.hermes/plugins/` and enables it.
+
+The `agents-hooks` plugin reads `claude/settings.json` on each call, so hook edits take effect without reinstalling. It maps each Claude Code event to its Hermes equivalent:
+
+| Claude Code | Hermes | What happens |
+|---|---|---|
+| `PreToolUse` | `pre_tool_call` | Exit 2 blocks the call, and stderr becomes the tool result. |
+| `PostToolUse` | `transform_tool_result` | Exit 2's stderr is appended to the result. The call has already run, as in Claude Code. |
+| `Stop` | `pre_verify` | Runs once per repo the turn edited. Exit 2 keeps the turn going, and the retry is sent with `stop_hook_active: true`. |
+
+Tool names are translated so the matchers apply unchanged: `terminal` → `Bash`, `write_file` → `Write`, `patch` → `Edit`. A V4A multi-file `patch` becomes one `Edit` per file, built from its added lines. Relative paths are made absolute against the agent's working directory. MCP tools are `mcp__<server>__<tool>` in both harnesses.
+
+Not carried over:
+- Hooks with `async` or `asyncRewake` (`coderabbit-watch.sh`, `ci-watch.sh`). Hermes can't wake a finished turn.
+- The SessionStart `memory-to-vault.sh`. Hermes uses `memory-recall.sh` instead (see [Shared memory](#shared-memory)).
+
+`hermes import-agent claude-code` (the `agent-importers` plugin) does **not** import hooks. A full run instead copies `CLAUDE.md` into Hermes memory, the command allowlist, every MCP server, and unlocked copies of the skills, so don't run it for this. `make check` runs `tests/hermes_plugin_test.py` against the real hooks.
 
 Hermes reads `AGENTS.md` only from the current working directory, so the global `AGENTS.md` doesn't apply there. Keep a project `AGENTS.md` in each repo.
 

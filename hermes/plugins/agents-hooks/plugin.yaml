@@ -1,0 +1,9 @@
+name: agents-hooks
+version: 1.0.0
+description: "Runs ~/agents Claude Code hooks (claude/settings.json) in Hermes: PreToolUse blocks tool calls, PostToolUse feedback is appended to results, Stop keeps the turn going. Async hooks are skipped."
+author: garrett
+kind: standalone
+provides_hooks:
+  - pre_tool_call
+  - transform_tool_result
+  - pre_verify

@@ -13,7 +13,8 @@
           { "type": "command", "command": "$HOME/agents/hooks/secret-print-guard.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/pr-naming-guard.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/pathspec-commit-guard.sh", "timeout": 10 },
-          { "type": "command", "command": "$HOME/agents/hooks/heavy-job-guard.sh", "timeout": 10 }
+          { "type": "command", "command": "$HOME/agents/hooks/heavy-job-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/secret-scan-commit.sh", "timeout": 60 }
         ]
       },
       {
@@ -33,12 +34,14 @@
           { "type": "command", "command": "$HOME/agents/hooks/guard-write.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/money-float-guard.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/nolint-justification.sh", "timeout": 10 },
-          { "type": "command", "command": "$HOME/agents/hooks/index-concurrently-guard.sh", "timeout": 10 }
+          { "type": "command", "command": "$HOME/agents/hooks/index-concurrently-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/pii-log-guard.sh", "timeout": 10 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
+          { "type": "command", "command": "$HOME/agents/hooks/tf-plan-summary.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/coderabbit-watch.sh", "timeout": 2100, "asyncRewake": true }
         ]
       }

@@ -168,6 +168,7 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
 - **pr-naming-guard.sh**: `gh pr create` in `Lumino-Devs/lumino-services` (`AGENTS_PR_NAMING_REPOS`) needs a `<type>/<TICKET>-<kebab>` branch (types from CONTRIBUTING.md plus `feat`, `fix`, `test`, `ci`, `perf`) and a title starting with the ticket (`LN-1234` or `LDEV-1234`; `AGENTS_TICKET_RE`). With `--fill`, the HEAD commit subject is checked.
 - **pathspec-commit-guard.sh**: in shared checkouts (`AGENTS_PATHSPEC_REPOS`, default `Lumino-Devs/lumino-services`) a commit must name its paths after `--`; a bare `git commit`, `-a` or `--amend` without paths would sweep in another session's staged files.
 - **heavy-job-guard.sh**: refuses a second heavy job while one runs (`docker build`, `docker compose … build`, `pnpm test:lux`, `pnpm validate:affected`, `next build`, `go test -race ./...`), because two at once exhausted this machine's memory. Narrow runs (one package) pass.
+- **secret-scan-commit.sh**: before `git commit`, runs gitleaks over the staged changes and over files the same command adds, and blocks on a finding (values redacted). Card numbers stay with `pan-scan.sh`. Without gitleaks (`brew install gitleaks`) it warns and allows.
 - **perf-commit-gate.sh**: a commit whose message says perf, optimize, faster or speed up needs benchstat output, either in the message or in a staged `perf/*.txt`.
 - **migration-explain-gate.sh**: committing a migration with `CREATE INDEX`, `SELECT` or `JOIN` needs `docs/explain/<migration>.txt` containing EXPLAIN ANALYZE output. **Opt-in:** it only applies in repos that have a `docs/explain/` directory (the service template creates one).
 - **bench-count-guard.sh**: `go test -bench` output saved to a file needs `-count` of at least 6.
@@ -187,7 +188,11 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
   - TS: `number` is correct for integer cents, so it flags float money being *created* instead: `parseFloat`, and `/ 100` or `* 100` conversions in logic. Display lines (`.format(`, `toLocaleString`, `toFixed`) are allowed.
   - Override with a `lint:allow-float` comment.
 - **nolint-justification.sh**: `//nolint`, `# noqa` and `eslint-disable` must name the rule and give a reason.
+- **pii-log-guard.sh** (Go, TS): a log call (`slog`, `log`, `logger`, `console`, `zap`, `zerolog`, `this.logger`, `.Info(`…) must not carry email, phone, names, IP/remote address, SSN, DOB or a request body. Log an ID or a salted hash; a line can opt out with `// pii-ok: <reason>`.
 - **index-concurrently-guard.sh**: in migration files, `CREATE INDEX` without `CONCURRENTLY`, or `ADD COLUMN` with a volatile default. Override with `-- lint:allow-blocking <reason>`.
+
+**PostToolUse (Bash):**
+- **tf-plan-summary.sh**: after `terraform`/`tofu plan` or `tf-run.sh … plan` that destroys or replaces anything, lists those resources and the plan counts, flags data and identity resources (`aws_db_*`, `aws_rds_*`, `aws_s3_bucket*`, `aws_iam_*`, `aws_kms_*`, `aws_secretsmanager_*`, `aws_dynamodb_table`) and reminds the agent to summarise for the user and never apply.
 
 **PostToolUse (Bash, background):**
 - **coderabbit-watch.sh**: after `gh pr create`, or `git push` on a branch with an open PR, in an allowed repo (`AGENTS_CR_REPOS`, default `Lumino-Devs/lumino-services`), it waits in the background (`asyncRewake`) for CodeRabbit's review of the pushed commit, then wakes the agent with the review's "Prompt to fix all issues" block (or the inline comment titles), framed as untrusted GitHub data. One watcher per commit; polls every 30 s (`AGENTS_CR_POLL`) for up to 30 min (`AGENTS_CR_WAIT`), and says so if no review arrives. It can only wake a session that is still running.

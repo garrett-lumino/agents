@@ -91,9 +91,10 @@ is_listed_repo() {
 }
 
 # The only command shape the exemption accepts, whole: `git [-C dir] push [flags] [remote [refspec...]]`,
-# with no chaining, quoting, variables, env prefixes, value-taking options or forced (+) refspecs.
+# with no chaining, quoting, variables, env prefixes, value-taking options, deletes or forced refspecs.
 PUSH_FLAGS='(-u|--set-upstream|--no-verify|--follow-tags|--tags|-v|--verbose|-q|--quiet|-n|--dry-run)'
-PLAIN_PUSH="^[[:space:]]*git( +-C +[A-Za-z0-9._/~-]+)? +push( +$PUSH_FLAGS)*( +[A-Za-z0-9._-]+( +[A-Za-z0-9._/:@^~-]+)*)?[[:space:]]*$"
+# Remote and refspec words never start with "-" (an option), ":" (a delete) or "+" (a force).
+PLAIN_PUSH="^[[:space:]]*git( +-C +[A-Za-z0-9._/~-]+)? +push( +$PUSH_FLAGS)*( +[A-Za-z0-9][A-Za-z0-9._-]*( +[A-Za-z0-9._/@^~][A-Za-z0-9._/:@^~-]*)*)?[[:space:]]*$"
 
 # push_target <cmd> <cwd>: print "<repo dir>\t<remote>" for a command matching PLAIN_PUSH.
 push_target() {
@@ -171,6 +172,8 @@ check_git() {
   if printf '%s' "$seg" | grep -Eq '[[:space:]]push([[:space:]]|$)'; then
     printf '%s' "$seg" | grep -Eq '[[:space:]](--force[^[:space:]]*|-[a-zA-Z]*f[a-zA-Z]*)([[:space:]]|$)' &&
       deny "force push" "$seg"
+    printf '%s' "$seg" | grep -Eq '[[:space:]](--mirror|--all|--prune)([[:space:]=]|$)' &&
+      deny "push --mirror/--all/--prune can overwrite or delete protected branches" "$seg"
     check_push_target "$seg" "$cwd" "$cmd"
   fi
   printf '%s' "$seg" | grep -Eq '[[:space:]]reset[[:space:]].*--hard|--hard.*[[:space:]]reset([[:space:]]|$)' || return 0

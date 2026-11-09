@@ -63,6 +63,12 @@ test_guard_protected_push() {
   allowed 'git push origin HEAD' "$repo"
   blocked 'git push origin feat/ln-1-x:develop' "$repo"
   blocked 'git push origin HEAD:refs/heads/master' "$repo"
+  # Pushes that can overwrite or delete protected branches whatever the current branch.
+  blocked 'git push --mirror origin' "$repo"
+  blocked 'git push --prune origin' "$repo"
+  blocked 'git push --all origin' "$repo"
+  blocked 'git push origin :develop' "$repo"
+  blocked 'git push origin --delete main' "$repo"
 }
 
 # The agents repo itself may take direct pushes to main; nothing else may.
@@ -98,6 +104,11 @@ test_guard_direct_push_repo() {
   blocked 'env GIT_DIR=x git push origin main' "$own"
   blocked 'git push origin +HEAD:main' "$own"                                # forced refspec
   blocked 'git push origin main 2>&1' "$own"                                 # anything extra
+  blocked 'git push origin --mirror' "$own"                                  # options after the remote
+  blocked 'git push origin -d main' "$own"
+  blocked 'git push origin --delete main' "$own"
+  blocked 'git push origin :main' "$own"                                     # empty source = delete
+  blocked 'git push --all' "$own"
   git -C "$own" remote set-url --push origin "$work"
   blocked 'git push origin main' "$own"                                    # push URL differs from fetch
   git -C "$own" config --unset remote.origin.pushurl

@@ -6,6 +6,7 @@ This vault is the shared, long-term memory for every AI tool Garrett uses (Claud
 
 - `claude-memory/_global/`: memories that apply to every project. Load its `MEMORY.md` at the start of every session.
 - `claude-memory/<project>/`: memories for one project. The folder name is the project's absolute path with `/` replaced by `-`, minus the leading `-Users-garrett-dev-github-` (e.g. `/Users/garrett/dev/github/pour` → `pour`). Claude Code reaches these through `~/.claude/projects/*/memory` symlinks.
+- `claude-memory/claude-ai/`: Garrett's claude.ai memory (profile, preferences, people, areas, claude.ai Projects), imported 2026-11-08 and flattened into this format; each file's `metadata.source` names its original path. Not tied to one project; the `_global` index points to it.
 - `claude-memory/Claude Memory.md`: generated index of folders. Never edit it; a hook rewrites it.
 
 ## Memory format

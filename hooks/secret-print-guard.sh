@@ -30,7 +30,7 @@ reason_for() {
 main() {
   local cmd seg why
   read_input
-  cmd=$(json_get '.tool_input.command')
+  cmd=$(hook_command)
   [ -n "$cmd" ] || exit 0
   # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
   while IFS= read -r seg; do

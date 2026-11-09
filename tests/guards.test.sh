@@ -22,6 +22,7 @@ test_secret_print_guard() {
   bash_case 2 $h 'doppler secrets get STRIPE_KEY --only-names'
   bash_case 0 $h 'kubectl get pods -l app=secret-rotator -o yaml'
   bash_case 0 $h 'doppler secrets --only-names'
+  bash_case 0 $h "$(printf 'git commit -F - -- a <<EOF\ndocs: never run doppler secrets get X --plain\nEOF')"   # message text
   bash_case 0 $h 'doppler run -- pnpm dev'
   bash_case 0 $h 'doppler secrets download --format env'          # writes a file, prints nothing
   bash_case 0 $h 'aws secretsmanager list-secrets'
@@ -70,6 +71,7 @@ test_pathspec_commit_guard() {
   bash_case 2 $h "cd $r && git commit -m x" "$other"
   bash_case 2 $h 'cd "$X" && git commit -m x' "$other"                   # can't tell: fail closed
   bash_case 2 $h "git commit -m x -- a; cd $r && git commit -m y" "$other"  # a second commit elsewhere
+  bash_case 0 $h "$(printf 'git commit -F - -- a.go <<'"'"'EOF'"'"'\nLN-1: cd into tools; git commit -a there\nEOF')" "$r"  # message text
   bash_case 0 $h 'git status' "$r"
 }
 
@@ -149,6 +151,7 @@ test_secret_scan_commit() {
   bash_case 2 $h "(cd $r && git commit -m x)" "$clean"                # subshell
   bash_case 2 $h "env -C $r git commit -m x" "$clean"                 # a wrapper moves it
   bash_case 2 $h "git commit -m a; cd $r && git commit -m x" "$clean" # a second commit elsewhere
+  bash_case 0 $h "$(printf 'git commit -F - <<'"'"'EOF'"'"'\nfix: cd after the first commit fails closed\nEOF')" "$clean"  # message text
   bash_case 2 $h "git -c core.worktree=$r commit -m x" "$clean"
   bash_case 0 $h 'GIT_AUTHOR_NAME=t git commit -m x' "$clean"            # plain assignments are fine
   # A tracked file committed from the working tree (-a, pathspecs, -i/-o) is scanned too.

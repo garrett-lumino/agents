@@ -145,7 +145,7 @@ Hermes reads `AGENTS.md` only from the current working directory, so the global 
 
 ## What the hooks enforce
 
-All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo an edit, so their message tells the agent what to fix.
+All hooks block with exit 2 and a reason on stderr. Command checks ignore heredoc bodies (a commit message is data, not commands) unless a shell reads them (`bash <<EOF`, `ssh host sh <<EOF`); the SQL check still reads them. PostToolUse hooks can't undo an edit, so their message tells the agent what to fix.
 
 **PreToolUse (Bash):**
 - **guard-bash.sh** blocks:

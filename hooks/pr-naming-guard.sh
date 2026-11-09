@@ -23,7 +23,7 @@ pr_title() {
 main() {
   local cmd dir branch title re
   read_input
-  cmd=$(json_get '.tool_input.command')
+  cmd=$(hook_command)
   [[ "$cmd" =~ (^|[;&|[:space:]])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]] || exit 0
   dir=$(hook_cwd)
   in_list "$(origin_repo "$dir")" "$REPOS" || exit 0

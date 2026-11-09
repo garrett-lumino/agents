@@ -12,7 +12,7 @@ HEAVY_PROC='docker( buildx)? build|docker compose .*(build|--build)|pnpm (run )?
 main() {
   local cmd running
   read_input
-  cmd=$(json_get '.tool_input.command')
+  cmd=$(hook_command)
   [[ "$cmd" =~ $HEAVY_CMD ]] || exit 0
   have pgrep || exit 0
   running=$(pgrep -fl -- "$HEAVY_PROC" 2>/dev/null | head -n 3)

@@ -11,7 +11,7 @@ REPOS="${AGENTS_PATHSPEC_REPOS:-Lumino-Devs/lumino-services}"
 main() {
   local cmd seg root
   read_input
-  cmd=$(json_get '.tool_input.command')
+  cmd=$(hook_command)
   is_commit "$cmd" || exit 0
   root=$(commit_root "$cmd" "$(hook_cwd)") ||
     block "BLOCKED by pathspec-commit-guard: can't tell which repo this commit runs in (cd/--git-dir/GIT_DIR/wrapper). Run the commit from the repo directory."

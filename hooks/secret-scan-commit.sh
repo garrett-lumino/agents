@@ -30,7 +30,7 @@ candidate_files() {
 main() {
   local cmd root out more file untracked n=0
   read_input
-  cmd=$(json_get '.tool_input.command')
+  cmd=$(hook_command)
   is_commit "$cmd" || exit 0
   have gitleaks || { printf 'warning: gitleaks not installed; secret scan skipped\n' >&2; exit 0; }
   root=$(commit_root "$cmd" "$(hook_cwd)") ||

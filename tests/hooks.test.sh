@@ -90,6 +90,11 @@ test_guard_protected_push() {
   blocked 'set -a; . ./gitenv; git push origin feat/ln-1-x' "$repo"
   blocked 'git --no-pager config remote.origin.mirror true && git push origin' "$repo"
   allowed 'git push origin feat/ln-1-x 2>&1 | tail -5' "$repo"
+  # Heredoc bodies are data, not commands, unless a shell reads them.
+  allowed "$(printf 'git commit -F - -- a <<'"'"'EOF'"'"'\nfix: stop the git push origin main in CI; cd tools first\nEOF')" "$repo"
+  blocked "$(printf 'bash <<'"'"'EOF'"'"'\ngit push origin main\nEOF')" "$repo"
+  blocked "$(printf 'ssh host sh <<EOF\ngit push origin main\nEOF')" "$repo"
+  blocked "$(printf 'psql <<EOF\nDROP TABLE users;\nEOF')"                          # SQL still read in heredocs
   # A push is its own command: commit hooks and fetch/log/diff options can run code.
   blocked 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"
   blocked "git fetch --upload-pack='touch x' origin && git push origin feat/ln-1-x" "$repo"

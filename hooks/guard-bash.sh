@@ -141,7 +141,8 @@ main() {
   cmd=$(json_get '.tool_input.command // .tool_input.query // .tool_input.sql')
   cwd=$(json_get '.cwd')
   [ -n "$cmd" ] || exit 0
-  check_sql "$cmd"
+  check_sql "$cmd" # reads heredoc bodies too: SQL is often fed to psql that way
+  cmd=$(strip_heredocs "$cmd")
   # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
   while IFS= read -r seg; do
     check_rm "$seg"

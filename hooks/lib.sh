@@ -33,6 +33,35 @@ json_get() {
   printf '%s' "$HOOK_INPUT" | jq -r "$1 // empty" 2>/dev/null
 }
 
+# strip_heredocs <cmd>: the command with heredoc bodies removed (<<WORD, <<'WORD', <<-WORD; not
+# <<< here-strings), so text like a commit message isn't read as commands. A body fed to a
+# shell (any of bash sh zsh dash ksh fish source . eval ssh sudo env xargs exec in that
+# segment) is kept: there it IS commands. Checks that must read heredoc data (SQL) skip this.
+strip_heredocs() {
+  printf '%s\n' "$1" | awk '
+    delim != "" {
+      line = $0
+      if (dash) sub(/^\t+/, "", line)
+      if (line == delim) { delim = ""; print "" }
+      next
+    }
+    { print }
+    match($0, /(^|[^<])<<-?[ \t]*["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/) {
+      tok = substr($0, RSTART, RLENGTH)
+      sub(/^[^<]/, "", tok)
+      pre = substr($0, 1, RSTART)
+      dash = (tok ~ /^<<-/)
+      gsub(/^<<-?[ \t]*|["\047]/, "", tok)
+      n = split(pre, parts, /[;&|(]/)
+      if (parts[n] !~ /(^|[ \t])(bash|sh|zsh|dash|ksh|fish|source|\.|eval|ssh|sudo|env|xargs|exec)([ \t]|$)/) delim = tok
+    }'
+}
+
+# hook_command: the Bash tool command with heredoc bodies stripped (see strip_heredocs).
+hook_command() {
+  strip_heredocs "$(json_get '.tool_input.command')"
+}
+
 # Directory the agent is working in (hook JSON cwd, else $PWD).
 hook_cwd() {
   local d

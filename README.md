@@ -155,6 +155,7 @@ All hooks block with exit 2 and a reason on stderr. PostToolUse hooks can't undo
   - `terraform`/`tofu`/`terragrunt` `apply` and `destroy`
   - SQL `DROP <object>`, `TRUNCATE` and `DELETE FROM`
   - `aws` write commands when the profile contains "prod"
+  - `kubectl` write verbs (`apply`, `create`, `delete`, `edit`, `patch`, `replace`, `scale`, `rollout`, `set`, `label`, `annotate`, `drain`, `cordon`, `taint`, `exec`, `cp`, `port-forward`, `debug`) when the context (`--context`, else the kubeconfig's current context) contains "prod"
 
   The same SQL check also runs on MCP SQL tools (`execute_sql`, `apply_migration`, `run_sql`, e.g. Supabase). It can't see SQL inside a file passed with `psql -f`.
 - **supply-chain-guard.sh** blocks:

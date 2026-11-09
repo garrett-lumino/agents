@@ -52,6 +52,23 @@ edited_text() {
     | map(select(. != null)) | join("\n")' 2>/dev/null
 }
 
+# github_repo <url>: owner/name of a github.com https/ssh/scp URL; nothing for anything else.
+github_repo() {
+  printf '%s' "$1" | sed -nE 's#^(https://|ssh://git@|git@)github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$#\2#p' | sed 's#\.git$##'
+}
+
+# origin_repo <dir>: owner/name of the GitHub repo that <dir>'s origin points at, or nothing.
+origin_repo() {
+  github_repo "$(git -C "$1" remote get-url origin 2>/dev/null)"
+}
+
+# in_list <word> <space-separated list>: exact membership.
+in_list() {
+  local entry
+  for entry in $2; do [ "$1" = "$entry" ] && return 0; done
+  return 1
+}
+
 is_git_commit() {
   printf '%s' "$1" | grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+commit([[:space:]]|$)'
 }

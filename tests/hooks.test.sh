@@ -145,6 +145,20 @@ test_guard_direct_push_repo() {
   blocked 'git push origin main' "$own"                                    # wrong host
 }
 
+test_guard_kubectl_prod() {
+  local kc="$TMP/kubeconfig"
+  printf 'apiVersion: v1\ncurrent-context: lumino-prod\n' >"$kc"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl -n lux rollout restart deploy/play'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x'
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl get pods -n lux'
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl --context dev-lux apply -f x.yaml'
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl logs deploy/play --tail 50'
+  printf 'apiVersion: v1\ncurrent-context: dev-lux\n' >"$kc"
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl apply -f x.yaml'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context=prod-lux scale deploy/play --replicas 0'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl exec --context prod-lux -it play -- sh'
+}
+
 sql_tool_json() { jq -nc --arg q "$1" '{tool_name:"mcp__claude_ai_Supabase__execute_sql",tool_input:{project_id:"p",query:$q}}'; }
 
 test_guard_sql_mcp() {
@@ -222,6 +236,7 @@ test_guard_terraform_git
 test_guard_reset
 test_guard_protected_push
 test_guard_direct_push_repo
+test_guard_kubectl_prod
 test_guard_sql_mcp
 test_guard_aws
 test_stop_gate

@@ -45,17 +45,6 @@ push_config_risky() {
 # GitHub repos (owner/name) whose protected branches may take direct pushes.
 DIRECT_PUSH_REPOS="${AGENTS_DIRECT_PUSH_REPOS:-garrett-lumino/agents}"
 
-# github_repo <url>: owner/name of a github.com https/ssh/scp URL; nothing for anything else.
-github_repo() {
-  printf '%s' "$1" | sed -nE 's#^(https://|ssh://git@|git@)github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$#\2#p' | sed 's#\.git$##'
-}
-
-is_listed_repo() {
-  local entry
-  for entry in $DIRECT_PUSH_REPOS; do [ "$1" = "$entry" ] && return 0; done
-  return 1
-}
-
 # The only command shape the exemption accepts, whole: `git [-C dir] push [flags] [remote [refspec...]]`,
 # with no chaining, quoting, variables, env prefixes, value-taking options, deletes or forced refspecs.
 PUSH_FLAGS='(-u|--set-upstream|--no-verify|--follow-tags|--tags|-v|--verbose|-q|--quiet|-n|--dry-run)'
@@ -96,7 +85,7 @@ push_exempt() {
   urls=$(git -C "$dir" remote get-url --push --all "$remote" 2>/dev/null) && [ -n "$urls" ] || return 1
   while IFS= read -r url; do
     repo=$(github_repo "$url")
-    [ -n "$repo" ] && is_listed_repo "$repo" || return 1
+    [ -n "$repo" ] && in_list "$repo" "$DIRECT_PUSH_REPOS" || return 1
   done <<<"$urls"
   return 0
 }

@@ -212,7 +212,12 @@ test_guard_kubectl_prod() {
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl {delete,} pod x'
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x --grace-period --context=dev-lux'   # value swallows the target
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl -shttps://prod.example delete pod x'
-  KUBECONFIG="$kc" bash_case 0 guard-bash.sh "kubectl --context dev-lux patch deploy/x -p '{\"spec\":{\"replicas\":1}}'"
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh "kubectl --context dev-lux patch deploy/x -p '{\"spec\":{\"replicas\":1}}'"  # quoted: use a file
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh 'kubectl --context dev-lux patch deploy/x --patch-file p.json'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context=dev-lux delete pod x --cont""ext=prod-lux'   # quote removal
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x --context= prod-lux'                      # empty attached value
+  KUBECONFIG="$TMP/prodcfg" bash_case 2 guard-bash.sh 'kubectl delete pod x --context= dev-lux'            # empty = current (prod)
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x -qs https://prod.example'                # -s in a flag group
   KUBECONFIG="$kc" bash_case 0 guard-bash.sh "kubectl get pods -o jsonpath='{.items[*].metadata.name}'"
   # A context that can't be worked out fails closed for writes only.
   KUBECONFIG="$TMP/missing" bash_case 2 guard-bash.sh 'kubectl apply -f x.yaml'

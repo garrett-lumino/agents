@@ -50,18 +50,28 @@ kube_switches() {
   printf '%s' "$1" | grep -Eq 'kubectl([[:space:]]+[^[:space:]]+)*[[:space:]]+config[[:space:]]+(use-context|set-context|set-cluster|set-credentials|rename-context)|(export|declare|typeset)[[:space:]].*KUBECONFIG=|(^|[;&|][[:space:]]*)KUBECONFIG=[^[:space:]]*[[:space:]]*($|[;&|])'
 }
 
-# check_kubectl <seg> <cwd> <cmd>
-check_kubectl() {
-  local seg="$1" cwd="$2" words w i=0 found=0 unknown=0 ctx="" kcfg="" envcfg="" verb="" sub="" extra="" name val cluster
-  local -a files
+# kube_has_context <context> <file...>: the context is defined in one of the kubeconfigs.
+kube_has_context() {
+  local want="$1"
+  shift
+  awk -v want="$want" '/^contexts:/ { c = 1; next } /^[^ -]/ { c = 0 }
+    c && /^[ -]+name:/ { v = $0; sub(/^[ -]+name:[ ]*/, "", v); if (v == want) { f = 1; exit } }
+    END { exit !f }' "$@" 2>/dev/null
+}
+
+# kube_parse <seg>: read a kubectl call into KP_FOUND KP_VERB KP_SUB KP_CTX KP_KCFG KP_ENVCFG
+# KP_EXTRA (cluster/server/user values) and KP_UNKNOWN (1 when the verb can't be trusted).
+kube_parse() {
+  local words w i=0 name val
+  KP_FOUND=0 KP_UNKNOWN=0 KP_VERB="" KP_SUB="" KP_CTX="" KP_KCFG="" KP_ENVCFG="" KP_EXTRA=""
   set -f
-  read -r -a words <<<"$seg"
+  read -r -a words <<<"$1"
   set +f
   while [ "$i" -lt "${#words[@]}" ]; do
     w="${words[$i]}"
     i=$((i + 1))
-    if [ "$found" = 0 ]; then
-      case "$w" in KUBECONFIG=*) envcfg="${w#*=}" ;; kubectl) found=1 ;; esac
+    if [ "$KP_FOUND" = 0 ]; then
+      case "$w" in KUBECONFIG=*) KP_ENVCFG="${w#*=}" ;; kubectl) KP_FOUND=1 ;; esac
       continue
     fi
     [ "$w" = -- ] && break
@@ -69,39 +79,54 @@ check_kubectl() {
       -*=*) name="${w%%=*}" val="${w#*=}" ;;
       -*) name=$w val="" ;;
       *)
-        if [ -z "$verb" ]; then verb=$w; elif [ -z "$sub" ]; then sub=$w; fi
+        if [ -z "$KP_VERB" ]; then KP_VERB=$w; elif [ -z "$KP_SUB" ]; then KP_SUB=$w; fi
         continue
         ;;
     esac
+    # An option between auth/config and its subcommand could hide which subcommand runs.
+    case "$KP_VERB" in auth | config) [ -n "$KP_SUB" ] || KP_UNKNOWN=1 ;; esac
     case "$KUBE_OPT_FLAG" in *" $name "*) continue ;; esac
-    if [ -n "$verb" ]; then
+    if [ -n "$KP_VERB" ]; then
       # After the verb, only the options that pick the target cluster matter.
       case "$name" in --context | --kubeconfig | --cluster | --user | --server | -s) ;; *) continue ;; esac
     else
-      case "$KUBE_OPT_VALUE" in *" $name "*) ;; *) unknown=1 && continue ;; esac
+      case "$KUBE_OPT_VALUE" in *" $name "*) ;; *) KP_UNKNOWN=1 && continue ;; esac
     fi
     [ -n "$val" ] || { val="${words[$i]:-}"; [[ "$w" == *=* ]] || i=$((i + 1)); }
     case "$name" in
-      --context) ctx=$val ;;
-      --kubeconfig) kcfg=$val ;;
-      --cluster | --user | --server | -s) extra="$extra $val" ;;
+      --context) KP_CTX=$val ;;
+      --kubeconfig) KP_KCFG=$val ;;
+      --cluster | --user | --server | -s) KP_EXTRA="$KP_EXTRA $val" ;;
     esac
   done
-  [ "$found" = 1 ] || return 0
-  if [ "$unknown" = 0 ]; then
-    case "$KUBE_READ" in *" $verb "*) return 0 ;; esac
-    case "$KUBE_READ_SUB" in *" $verb:$sub "*) return 0 ;; esac
+}
+
+# check_kubectl <seg> <cwd> <cmd>
+check_kubectl() {
+  local seg="$1" ctx cluster w
+  local -a files
+  kube_parse "$seg"
+  [ "$KP_FOUND" = 1 ] || return 0
+  if [ "$KP_UNKNOWN" = 0 ]; then
+    case "$KUBE_READ" in *" $KP_VERB "*) return 0 ;; esac
+    case "$KUBE_READ_SUB" in *" $KP_VERB:$KP_SUB "*) return 0 ;; esac
   fi
   # A write, or a verb that can't be read with certainty: is the target prod?
-  [ "$verb" != config ] && kube_switches "$3" &&
-    deny "this command switches kubectl context or kubeconfig and then runs kubectl $verb; run them separately" "$seg"
+  [ "$KP_VERB" != config ] && kube_switches "$3" &&
+    deny "this command switches kubectl context or kubeconfig and then runs kubectl $KP_VERB; run them separately" "$seg"
+  [[ "$KP_CTX $KP_KCFG $KP_ENVCFG $KP_EXTRA" =~ [\"\'\$\`\\*?[] ]] &&
+    deny "kubectl $KP_VERB: the target (context, kubeconfig, cluster, server or user) is quoted or expanded, so it can't be checked" "$seg"
   files=()
-  while IFS= read -r w; do files+=("$w"); done < <(kube_files "$cwd" "${kcfg:-${envcfg:-${KUBECONFIG:-$HOME/.kube/config}}}")
-  [ -n "$ctx" ] || ctx=$(kube_current_context "${files[@]}") ||
-    deny "kubectl $verb: can't tell which context it would use" "$seg"
+  while IFS= read -r w; do files+=("$w"); done < <(kube_files "$2" "${KP_KCFG:-${KP_ENVCFG:-${KUBECONFIG:-$HOME/.kube/config}}}")
+  if [ -n "$KP_CTX" ]; then
+    ctx=$KP_CTX
+    kube_has_context "$ctx" "${files[@]}" || deny "kubectl $KP_VERB: context '$ctx' is not in the kubeconfig" "$seg"
+  else
+    ctx=$(kube_current_context "${files[@]}") || deny "kubectl $KP_VERB: can't tell which context it would use" "$seg"
+  fi
   cluster=$(kube_cluster_of "$ctx" "${files[@]}")
-  case "$(lower "$ctx $cluster $extra")" in
-    *prod*) deny "kubectl ${verb:-?} against prod (context '$ctx'); prod is read-only for agents" "$seg" ;;
+  case "$(lower "$ctx $cluster $KP_EXTRA")" in
+    *prod*) deny "kubectl ${KP_VERB:-?} against prod (context '$ctx'); prod is read-only for agents" "$seg" ;;
   esac
   return 0
 }

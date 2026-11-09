@@ -42,6 +42,10 @@ PUSH_WORD='^[+]?[A-Za-z0-9._/@^~-]*(:[A-Za-z0-9._/@^~-]+)?$'
 push_chain_ok() {
   local s cmd
   cmd=$(printf '%s' "$1" | sed -E 's/[0-9]?>&[0-9]//g; s#[0-9]?>[[:space:]]*/dev/null##g')
+  # Code or file writes hidden inside an allowed segment: substitutions, other redirects, --output.
+  [[ "$cmd" =~ \$\(|\`|\<\(|\>\(|[\<\>]|--output ]] && return 1
+  # Config writes anywhere (git with any global options, then config/remote; the config files).
+  printf '%s' "$cmd" | grep -Eq 'git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(config|remote)([[:space:]]|$)|\.git/config|\.gitconfig' && return 1
   # shellcheck disable=SC2020  # per-char on purpose: ; & | each end a segment
   while IFS= read -r s; do
     [[ "$s" =~ ^[[:space:]]*$ ]] && continue

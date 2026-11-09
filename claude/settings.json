@@ -10,7 +10,10 @@
           { "type": "command", "command": "$HOME/agents/hooks/perf-commit-gate.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/migration-explain-gate.sh", "timeout": 10 },
           { "type": "command", "command": "$HOME/agents/hooks/bench-count-guard.sh", "timeout": 10 },
-          { "type": "command", "command": "$HOME/agents/hooks/secret-print-guard.sh", "timeout": 10 }
+          { "type": "command", "command": "$HOME/agents/hooks/secret-print-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/pr-naming-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/pathspec-commit-guard.sh", "timeout": 10 },
+          { "type": "command", "command": "$HOME/agents/hooks/heavy-job-guard.sh", "timeout": 10 }
         ]
       },
       {

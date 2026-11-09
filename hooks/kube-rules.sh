@@ -59,11 +59,24 @@ kube_has_context() {
     END { exit !f }' "$@" 2>/dev/null
 }
 
+# kube_tricky <word> <before-verb 0|1>: the shell could expand or re-split this word into other
+# options or another verb: $ or backticks, unquoted brace patterns, and quotes, escapes or
+# globs in an option word or anywhere up to the verb.
+kube_tricky() {
+  local w="$1"
+  [[ "$w" == *'$'* || "$w" == *'`'* ]] && return 0
+  case "$w" in \"* | \'*) ;; *) [[ "$w" =~ \{[^}]*(,|\.\.)[^}]*\} ]] && return 0 ;; esac
+  if [ "$2" = 1 ] || [[ "$w" == -* ]]; then [[ "$w" =~ [\"\'\\*?[] ]] && return 0; fi
+  return 1
+}
+
 # kube_parse <seg>: read a kubectl call into KP_FOUND KP_VERB KP_SUB KP_CTX KP_KCFG KP_ENVCFG
-# KP_EXTRA (cluster/server/user values) and KP_UNKNOWN (1 when the verb can't be trusted).
+# KP_EXTRA (cluster/server/user values), KP_UNKNOWN (the verb can't be trusted), KP_SWALLOW
+# (a target option may be another option's value),
+# KP_TRICKY (some word the shell could rewrite) and KP_TRICKY_PRE (one up to the verb).
 kube_parse() {
-  local words w i=0 name val
-  KP_FOUND=0 KP_UNKNOWN=0 KP_VERB="" KP_SUB="" KP_CTX="" KP_KCFG="" KP_ENVCFG="" KP_EXTRA=""
+  local words w i=0 name val pending=0 pre
+  KP_FOUND=0 KP_UNKNOWN=0 KP_SWALLOW=0 KP_TRICKY=0 KP_TRICKY_PRE=0 KP_VERB="" KP_SUB="" KP_CTX="" KP_KCFG="" KP_ENVCFG="" KP_EXTRA=""
   set -f
   read -r -a words <<<"$1"
   set +f
@@ -75,30 +88,48 @@ kube_parse() {
       continue
     fi
     [ "$w" = -- ] && break
+    pre=0 && [ -z "$KP_VERB" ] && pre=1
+    kube_tricky "$w" "$pre" && { KP_TRICKY=1; [ "$pre" = 0 ] || KP_TRICKY_PRE=1; }
     case "$w" in
       -*=*) name="${w%%=*}" val="${w#*=}" ;;
+      -s?*) name=-s val="${w#-s}" ;;
       -*) name=$w val="" ;;
       *)
         if [ -z "$KP_VERB" ]; then KP_VERB=$w; elif [ -z "$KP_SUB" ]; then KP_SUB=$w; fi
+        pending=0
         continue
         ;;
     esac
     # An option between auth/config and its subcommand could hide which subcommand runs.
     case "$KP_VERB" in auth | config) [ -n "$KP_SUB" ] || KP_UNKNOWN=1 ;; esac
-    case "$KUBE_OPT_FLAG" in *" $name "*) continue ;; esac
-    if [ -n "$KP_VERB" ]; then
-      # After the verb, only the options that pick the target cluster matter.
-      case "$name" in --context | --kubeconfig | --cluster | --user | --server | -s) ;; *) continue ;; esac
-    else
-      case "$KUBE_OPT_VALUE" in *" $name "*) ;; *) KP_UNKNOWN=1 && continue ;; esac
-    fi
-    [ -n "$val" ] || { val="${words[$i]:-}"; [[ "$w" == *=* ]] || i=$((i + 1)); }
-    case "$name" in
-      --context) KP_CTX=$val ;;
-      --kubeconfig) KP_KCFG=$val ;;
-      --cluster | --user | --server | -s) KP_EXTRA="$KP_EXTRA $val" ;;
-    esac
+    case "$KUBE_OPT_FLAG" in *" $name "*) pending=0 && continue ;; esac
+    kube_option "$name" "$val" "${words[$i]:-}" "$pending" && i=$((i + 1))
+    pending=$KP_PENDING
   done
+}
+
+# kube_option <name> <attached value> <next word> <previous option may take a value 0|1>:
+# record a target option; returns 0 when it consumed the next word as its value.
+kube_option() {
+  local name="$1" val="$2" next="$3" took=1
+  KP_PENDING=0
+  if [ -n "$KP_VERB" ]; then
+    case "$name" in
+      --context | --kubeconfig | --cluster | --user | --server | -s)
+        # After an option that may take a value, kubectl would read this word as that value.
+        [ "$4" = 1 ] && KP_SWALLOW=1 ;;
+      *) [ -n "$val" ] || KP_PENDING=1 && return 1 ;;
+    esac
+  else
+    case "$KUBE_OPT_VALUE" in *" $name "*) ;; *) KP_UNKNOWN=1 && return 1 ;; esac
+  fi
+  [ -n "$val" ] || { val=$next; took=0; }
+  case "$name" in
+    --context) KP_CTX=$val ;;
+    --kubeconfig) KP_KCFG=$val ;;
+    --cluster | --user | --server | -s) KP_EXTRA="$KP_EXTRA $val" ;;
+  esac
+  return "$took"
 }
 
 # check_kubectl <seg> <cwd> <cmd>
@@ -107,13 +138,17 @@ check_kubectl() {
   local -a files
   kube_parse "$seg"
   [ "$KP_FOUND" = 1 ] || return 0
-  if [ "$KP_UNKNOWN" = 0 ]; then
+  if [ "$KP_UNKNOWN" = 0 ] && [ "$KP_TRICKY_PRE" = 0 ]; then
     case "$KUBE_READ" in *" $KP_VERB "*) return 0 ;; esac
     case "$KUBE_READ_SUB" in *" $KP_VERB:$KP_SUB "*) return 0 ;; esac
   fi
   # A write, or a verb that can't be read with certainty: is the target prod?
   [ "$KP_VERB" != config ] && kube_switches "$3" &&
     deny "this command switches kubectl context or kubeconfig and then runs kubectl $KP_VERB; run them separately" "$seg"
+  [ "$KP_SWALLOW" = 0 ] ||
+    deny "kubectl $KP_VERB: a target option follows an option that may take it as its value, so the real target is unknown" "$seg"
+  [ "$KP_TRICKY" = 0 ] ||
+    deny "kubectl $KP_VERB: a word could be rewritten by the shell (\$, backticks, braces, quotes in options), so the target can't be checked; use plain words or a file (-f, --patch-file)" "$seg"
   [[ "$KP_CTX $KP_KCFG $KP_ENVCFG $KP_EXTRA" =~ [\"\'\$\`\\*?[] ]] &&
     deny "kubectl $KP_VERB: the target (context, kubeconfig, cluster, server or user) is quoted or expanded, so it can't be checked" "$seg"
   files=()

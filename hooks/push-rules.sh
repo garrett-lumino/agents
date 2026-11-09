@@ -36,9 +36,9 @@ PUSH_SHORT='^-[uvqnd]+$'
 # A remote or refspec word: plain characters only (no quotes, globs, $), and no empty destination.
 PUSH_WORD='^[+]?[A-Za-z0-9._/@^~-]*(:[A-Za-z0-9._/@^~-]+)?$'
 
-# push_chain_ok <cmd>: every part of the command is the push itself, a plain git add/commit/
-# status/diff/log/fetch/rev-parse, or a `| tail`/`| head`. Anything else (cd, env, export,
-# unset, eval, quoting tricks, heredoc text) could change what the push does unseen.
+# push_chain_ok <cmd>: the command is the push alone, optionally with 2>&1 and a trailing
+# `| tail`/`| head`. Anything chained with it (cd, env, export, eval, commit hooks, fetch/log/
+# diff options that run programs, quoting tricks, heredoc text) could change it unseen.
 push_chain_ok() {
   local s cmd
   cmd=$(printf '%s' "$1" | sed -E 's/[0-9]?>&[0-9]//g; s#[0-9]?>[[:space:]]*/dev/null##g')
@@ -50,7 +50,7 @@ push_chain_ok() {
   while IFS= read -r s; do
     [[ "$s" =~ ^[[:space:]]*$ ]] && continue
     [[ "$s" =~ ^[[:space:]]*(tail|head)([[:space:]]+-n)?([[:space:]]+-?[0-9]+)?[[:space:]]*$ ]] && continue
-    [[ "$s" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[A-Za-z0-9._/~-]+)?[[:space:]]+(push|add|commit|status|diff|log|fetch|rev-parse)([[:space:]]|$) ]] || return 1
+    [[ "$s" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[A-Za-z0-9._/~-]+)?[[:space:]]+push([[:space:]]|$) ]] || return 1
   done < <(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')
   return 0
 }
@@ -118,7 +118,7 @@ check_push_target() {
   seg=$(printf '%s' "$seg" | sed -E 's/[[:space:]][0-9]?>>?[[:space:]]*[^[:space:]]*//g; s/[[:space:]][0-9]?>>?$//')
   # Anything else in the same command could change the repo, config or environment unseen.
   push_chain_ok "$3" ||
-    deny "a push runs as its own command (or after plain git add/commit); run the rest separately" "$seg"
+    deny "a push runs as its own command; run the rest (add, commit, ...) as a separate command first" "$seg"
   set -f
   read -r -a words <<<"$seg"
   set +f

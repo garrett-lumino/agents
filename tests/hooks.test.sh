@@ -89,8 +89,10 @@ test_guard_protected_push() {
   blocked 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true; git push origin' "$repo"
   blocked 'set -a; . ./gitenv; git push origin feat/ln-1-x' "$repo"
   blocked 'git --no-pager config remote.origin.mirror true && git push origin' "$repo"
-  allowed 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"   # ordinary chains still work
   allowed 'git push origin feat/ln-1-x 2>&1 | tail -5' "$repo"
+  # A push is its own command: commit hooks and fetch/log/diff options can run code.
+  blocked 'git add -- a && git commit -m x -- a && git push origin feat/ln-1-x' "$repo"
+  blocked "git fetch --upload-pack='touch x' origin && git push origin feat/ln-1-x" "$repo"
   # A push runs alone or after plain git add/commit/status; anything else in the command is refused.
   blocked "cd $TMP && git push origin feat/ln-1-x" "$repo"
   blocked 'HOME=/tmp/x true; git push origin feat/ln-1-x' "$repo"
@@ -204,6 +206,14 @@ test_guard_kubectl_prod() {
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh "kubectl --context pr''od-lux delete pod x"
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context $CTX delete pod x'
   KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --context not-in-config apply -f x.yaml'   # unknown context
+  # Shell expansion could build the target or the verb: refused for writes.
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl --cont{ext=prod-lux,} delete pod x'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl $OPTS delete pod x'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl {delete,} pod x'
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl delete pod x --grace-period --context=dev-lux'   # value swallows the target
+  KUBECONFIG="$kc" bash_case 2 guard-bash.sh 'kubectl -shttps://prod.example delete pod x'
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh "kubectl --context dev-lux patch deploy/x -p '{\"spec\":{\"replicas\":1}}'"
+  KUBECONFIG="$kc" bash_case 0 guard-bash.sh "kubectl get pods -o jsonpath='{.items[*].metadata.name}'"
   # A context that can't be worked out fails closed for writes only.
   KUBECONFIG="$TMP/missing" bash_case 2 guard-bash.sh 'kubectl apply -f x.yaml'
   KUBECONFIG="$TMP/missing" bash_case 0 guard-bash.sh 'kubectl get pods'

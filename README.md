@@ -72,6 +72,8 @@ The format and rules every tool follows are in `memory/vault-AGENTS.md`, copied 
 /plugin install security-guidance@claude-plugins-official
 /plugin install playwright@claude-plugins-official
 /plugin install typescript-lsp@claude-plugins-official
+/plugin install gopls-lsp@claude-plugins-official      # needs gopls: go install golang.org/x/tools/gopls@latest
+/plugin install coderabbit@claude-plugins-official     # needs the CodeRabbit CLI: brew install coderabbit && coderabbit auth login
 
 /plugin marketplace add multica-ai/andrej-karpathy-skills
 /plugin install andrej-karpathy-skills@karpathy-skills

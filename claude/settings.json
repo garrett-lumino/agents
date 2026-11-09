@@ -70,6 +70,8 @@
     "security-guidance@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "coderabbit@claude-plugins-official": true,
     "andrej-karpathy-skills@karpathy-skills": true,
     "hf-cli@huggingface-skills": true,
     "cc-skills-golang@samber": false,

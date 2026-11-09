@@ -16,6 +16,10 @@ test_guard_rm() {
   blocked 'rm -rf ~/'
   blocked 'sudo rm -fr /usr'
   blocked 'cd x && rm -r -f /Users/someone'
+  blocked '(rm -rf ~)'                      # subshell: ) ends the segment
+  blocked 'echo $(rm -rf ~)'
+  blocked '{ rm -rf ~; }'                   # brace group
+  blocked 'rm -rf ${HOME}'                  # ${...} is not a brace group
   allowed 'rm -rf ./build'
   allowed 'rm -rf ~/projects/app/node_modules'
   allowed 'ls -la'
@@ -35,6 +39,8 @@ test_guard_sql() {
 test_guard_terraform_git() {
   blocked 'terraform destroy'
   blocked 'terraform -chdir=infra apply -auto-approve'
+  blocked '(terraform destroy)'
+  blocked '{ terraform apply; }'
   allowed 'terraform plan'
   blocked 'git push --force'
   blocked 'git push -f origin feature'

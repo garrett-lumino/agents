@@ -1,0 +1,5 @@
+.DS_Store
+.smart-env/
+.trash/
+*.tmp
+.obsidian/

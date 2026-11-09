@@ -37,6 +37,16 @@
       {
         "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/stop-gate.sh", "timeout": 900 }]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/memory-to-vault.sh", "timeout": 15 }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{ "type": "command", "command": "$HOME/agents/hooks/vault-commit.sh", "timeout": 15 }]
+      }
     ]
   },
   "enabledPlugins": {

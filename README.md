@@ -15,8 +15,9 @@ Per-project config (boundary maps, linter configs) does **not** live here. Copy 
 | `templates/project/` | Go/TS service starter: `AGENTS.md`, `CLAUDE.md`, `.golangci.yml`, `.go-arch-lint.yml`, `Makefile` (check, bench, escape, explain), `docs/explain/`. |
 | `templates/ml-project/` | uv Python ML starter: `pyproject.toml`, `Makefile`, `evals/`, `.ml/` gate docs, `.gitignore`, `AGENTS.md`. |
 | `hermes/config.snippet.yaml` | Points Hermes at the shared skills and the MLflow MCP server. |
-| `scripts/` | `install.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
-| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `ml-hooks` and `skills` suites. |
+| `memory/` | Shared AI memory vault for every harness: the vault guide (`vault-AGENTS.md`), the pointer other harnesses load (`harness-AGENTS.md`), the `obsidian-memory` MCP server definition, the vault `.gitignore`. See [Shared memory](#shared-memory). |
+| `scripts/` | `install.sh`, `install-memory.sh`, `merge-settings.sh`, `lock-skills.sh`, `vendor-skill.sh`, `new-project.sh`. |
+| `tests/` | `make check` runs shellcheck plus `hooks`, `books-hooks`, `memory`, `ml-hooks` and `skills` suites. |
 
 Requires `bash`, `jq` and `git`. Formatters and linters (goimports, gofumpt, golangci-lint, prettier, eslint, ruff, terraform) are optional: hooks skip any that aren't installed. The ML launch gate is the exception: without `jq` it fails closed.
 
@@ -45,6 +46,19 @@ scripts/lock-skills.sh unlock && git pull && scripts/lock-skills.sh lock
 ```
 
 Before committing, run `make check` (shellcheck plus every test suite).
+
+## Shared memory
+
+Every AI tool shares one long-term memory: the Obsidian vault at `~/dev/obsidian` (set `AGENTS_VAULT` to move it), a local git repo that is never pushed. `scripts/install-memory.sh`, run by `install.sh`, wires it in:
+
+| Harness | How it reaches the memory |
+|---|---|
+| Claude Code | `~/.claude/projects/*/memory` are symlinks into `claude-memory/<project>`. SessionStart `memory-to-vault.sh` links new projects, regenerates `Claude Memory.md`, injects the `_global` index and the `memory-lint.sh` findings, and asks to save memories after a compaction. SessionEnd `vault-commit.sh` commits. |
+| Codex, opencode | Global `AGENTS.md` symlinked to `memory/harness-AGENTS.md`, plus the `obsidian-memory` MCP server. |
+| Cursor, Claude Desktop | The `obsidian-memory` MCP server (`@modelcontextprotocol/server-filesystem`, pinned, vault only). Cursor's global rules live in app settings: paste `memory/harness-AGENTS.md` there. |
+| Any tool | A launchd job (`com.agents.vault-commit`) runs `vault-commit.sh` every 15 minutes, so writes from tools without session hooks are versioned too. |
+
+The format and rules every tool follows are in `memory/vault-AGENTS.md`, copied to the vault as `AGENTS.md` on each install. Edit them here, not in the vault. Browser-only tools can't reach the local MCP server.
 
 ## Plugins
 

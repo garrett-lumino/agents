@@ -6,6 +6,7 @@
 #   4. link each vendored skill into ~/.claude/skills/
 #   5. merge claude/settings.json into ~/.claude/settings.json
 #   6. make skill folders read-only (scripts/lock-skills.sh)
+#   7. wire the shared AI memory vault into every harness (scripts/install-memory.sh)
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -72,6 +73,7 @@ main() {
   link_skills
   "$REPO/scripts/merge-settings.sh"
   "$REPO/scripts/lock-skills.sh" lock
+  "$REPO/scripts/install-memory.sh"
 }
 
 main "$@"

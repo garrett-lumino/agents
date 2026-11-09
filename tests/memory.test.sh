@@ -59,6 +59,13 @@ test_vault_commit() {
   check "commit: dirty vault committed" test "$n" = 1
   printf '{}' | AGENTS_VAULT="$r" "$HOOKS/vault-commit.sh"
   check "commit: clean vault makes no commit" test "$(git -C "$r" rev-list --count HEAD)" = 1
+  printf '#!/bin/sh\ntouch "%s/pwned"\n' "$TMP" >"$r/.git/hooks/pre-commit" && chmod +x "$r/.git/hooks/pre-commit"
+  git -C "$r" config core.fsmonitor "touch $TMP/pwned-fsmonitor #"
+  echo y >"$r/b.md"
+  printf '{}' | AGENTS_VAULT="$r" "$HOOKS/vault-commit.sh"
+  check "commit: still commits with a planted hook" test "$(git -C "$r" rev-list --count HEAD)" = 2
+  check "commit: repo pre-commit hook not run" test ! -e "$TMP/pwned"
+  check "commit: repo fsmonitor not run" test ! -e "$TMP/pwned-fsmonitor"
   check "commit: no repo is a no-op" sh -c 'printf "{}" | AGENTS_VAULT=/nonexistent "$1"' _ "$HOOKS/vault-commit.sh"
 }
 
@@ -72,7 +79,7 @@ test_installer() {
   check "install: vault AGENTS.md written" test -f "$i/vault/AGENTS.md"
   check "install: vault is a git repo" test -d "$i/vault/.git"
   check "install: cursor keeps other servers" jqe '.mcpServers.keep and .mcpServers["obsidian-memory"]' "$i/.cursor/mcp.json"
-  check "install: vault path substituted" jqe --arg v "$i/vault" '.mcpServers["obsidian-memory"].args[-1] == $v' "$i/.cursor/mcp.json"
+  check "install: vault path substituted" jqe --arg v "$i/vault" '.mcpServers["obsidian-memory"].args[-1] == ($v + "/claude-memory")' "$i/.cursor/mcp.json"
   check "install: opencode server added" jqe '.mcp["obsidian-memory"].type == "local"' "$i/.config/opencode/opencode.jsonc"
   check "install: codex table written once" test "$(grep -c '^\[mcp_servers.obsidian-memory\]' "$i/.codex/config.toml")" = 1
   check "install: codex pointer linked" test -L "$i/.codex/AGENTS.md"

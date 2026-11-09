@@ -1,5 +1,5 @@
 {
   "name": "obsidian-memory",
   "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem@2.0.1", "${VAULT}"]
+  "args": ["-y", "@modelcontextprotocol/server-filesystem@2.0.1", "${VAULT}/claude-memory"]
 }

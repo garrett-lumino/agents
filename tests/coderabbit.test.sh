@@ -18,7 +18,10 @@ cat >"$TMP/bin/gh" <<'EOF'
 case "$1 $2" in
   "repo view") echo "${FAKE_REPO:-Lumino-Devs/lumino-services}"; exit 0 ;;
   "pr view")
-    case "$*" in *headRefOid*) echo "$FAKE_HEAD" ;; *) echo "42 https://github.com/x/y/pull/42" ;; esac
+    case "$*" in
+      *headRefOid*) echo "$FAKE_HEAD" ;;
+      *) echo "$3" >"$FAKE_FIX/pr-view.branch"; echo "42 https://github.com/x/y/pull/42" ;;
+    esac
     exit 0 ;;
   "pr checks") cat "$FAKE_FIX/checks.json"; exit 0 ;;
   "run view")
@@ -113,6 +116,25 @@ test_timeout() {
   check "watch: timeout still wakes" test "$RC" = 2
 }
 
+# The session sits on one branch while the command pushes another (a second worktree, or a
+# branch pushed by name): the PR and the commit are the pushed branch's, not the checkout's.
+test_other_branch() {
+  local other b=feat/LN-1-other
+  other=$(git -C "$REPO" -c user.email=t@t -c user.name=t commit-tree "HEAD^{tree}" -p HEAD -m other)
+  git -C "$REPO" update-ref "refs/remotes/origin/$b" "$other"
+  reviews "$(review 7 "coderabbitai[bot]" "$other" "$MAIN")"
+  run_watch "git push -u origin $b" other-push
+  check "watch: a pushed branch is looked up by name" test "$(cat "$FIX/pr-view.branch")" = "$b"
+  check "watch: the pushed branch's commit is the one reviewed" said "at ${other:0:8}"
+  run_watch "git push --force-with-lease origin HEAD:refs/heads/$b" other-refspec
+  check "watch: a refspec names its destination branch" test "$(cat "$FIX/pr-view.branch")" = "$b"
+  run_watch "gh pr create --base develop --head $b --title 'x y'" other-create
+  check "watch: gh pr create --head names the branch" test "$(cat "$FIX/pr-view.branch")" = "$b"
+  check "watch: and delivers its review" test "$RC" = 2
+  run_watch "git push" other-plain
+  check "watch: a bare push still uses the checked-out branch" test "$(cat "$FIX/pr-view.branch")" = --json
+}
+
 # run_ci <command> <state-name> [head sha]: run the CI watcher like run_watch.
 run_ci() {
   jq -nc --arg c "$1" --arg d "$REPO" '{tool_input: {command: $c}, cwd: $d}' |
@@ -162,5 +184,6 @@ test_delivers_prompt
 test_no_actionable
 test_inline_fallback
 test_timeout
+test_other_branch
 test_ci_watch
 finish

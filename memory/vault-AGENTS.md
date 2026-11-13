@@ -5,17 +5,21 @@ This vault is the shared, long-term memory for every AI tool Garrett uses (Claud
 ## Layout
 
 - `claude-memory/_global/`: memories that apply to every project. Load its `MEMORY.md` at the start of every session.
-- `claude-memory/<project>/`: memories for one project. The folder name is the project's absolute path with `/` replaced by `-`, minus the leading `-Users-garrett-dev-github-` (e.g. `/Users/garrett/dev/github/pour` → `pour`). Claude Code reaches these through `~/.claude/projects/*/memory` symlinks.
+- `claude-memory/<repo>/<feature>/<memory>.md`: memories for one code repo. The folder is the repo's name (its `origin` remote, e.g. `lumino-services`), shared by every clone and worktree of it; a hook never makes a folder per worktree. Feature subfolders group related memories (`lumino-services/lux/`, `lumino-services/ci-cd/`). Claude Code reaches these through `~/.claude/projects/*/memory` symlinks.
+- `claude-memory/<topic>/<specific>/<memory>.md`: reference banks not tied to one repo (`payment-processors/adyen/`, `omnivenue/ledger/`).
 - `claude-memory/claude-ai/`: Garrett's claude.ai memory (profile, preferences, people, areas, claude.ai Projects), imported 2026-11-08 and flattened into this format; each file's `metadata.source` names its original path. Not tied to one project; the `_global` index points to it.
 - `claude-memory/Claude Memory.md`: generated index of folders. Never edit it; a hook rewrites it.
 
 ## Memory format
 
-Each folder has a `MEMORY.md` index with one line per memory:
+Each repo or topic folder has a `MEMORY.md` index with one line per memory, grouped under feature headings, linking relative paths:
 
 ```
-- [Short title](file-name.md) — one-line hook
+## Lux
+- [Short title](lux/file-name.md) — one-line hook
 ```
+
+A large subfolder may have its own `MEMORY.md`, linked from the parent index (`- [Adyen memory bank](adyen/MEMORY.md) — …`). Keep each repo's root index under 200 lines; Claude Code loads only that file.
 
 Every other `.md` file holds one fact:
 
@@ -33,6 +37,7 @@ Link related memories with [[their-name]].
 
 ## Rules for every tool
 
+- Put a new memory in the feature or topic subfolder it belongs to (create one when none fits); never make a folder per worktree or branch.
 - Add the `MEMORY.md` line in the same change as the file. A file missing from the index is never loaded.
 - Check for an existing memory before writing a new one; update it rather than duplicating.
 - Write dates as absolute dates (2026-11-08), never "today" or "last week".

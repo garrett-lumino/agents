@@ -12,11 +12,7 @@ first=$(printf '%s' "$input" | jq -r '([.extra.is_first_turn, .is_first_turn] | 
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$cwd" ] || cwd=$PWD
-# Same folder naming as Claude Code: non-alphanumerics become "-", then drop the home prefix.
-prefix=$(printf '%s' "$HOME/dev/github/" | tr -c 'A-Za-z0-9' '-')
-project=$(printf '%s' "$cwd" | tr -c 'A-Za-z0-9' '-')
-project=${project#"$prefix"}
-project=${project#-}
+project=$("$(dirname -- "$0")/memory-folder.sh" "$cwd") # one folder per repo, as memory-to-vault.sh links it
 
 context=$(
   printf 'Shared long-term memory lives in %s (format and rules: %s/AGENTS.md).\n' "$MEM" "$VAULT"

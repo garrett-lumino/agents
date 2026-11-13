@@ -8,7 +8,6 @@ set -u
 H="$TMP/home"                       # fake $HOME
 V="$H/dev/obsidian"                 # default vault under it
 P="$H/.claude/projects"
-PRE=$(printf '%s' "$H/dev/github/" | tr '/' '-')
 
 memfile() { # memfile <path> <name> [type]
   printf -- '---\nname: %s\ndescription: d\nmetadata:\n  type: %s\n---\nbody\n' "$2" "${3:-user}" >"$1"
@@ -31,21 +30,51 @@ test_lint() {
   check "lint: dangling index line reported" grep -q 'points at missing gone.md' <<<"$out"
   check "lint: hub-linked file not reported" bash -c '! grep -q child.md <<<"$1"' _ "$out"
   check "lint: indexed file not reported" bash -c '! grep -q "lint/a.md" <<<"$1"' _ "$out"
+  mkdir -p "$d/feat/deep" "$d/topic"
+  printf -- '- [F](feat/f.md) — x\n- [T](topic/MEMORY.md) — y\n- [Lost](feat/lost.md) — z\n' >>"$d/MEMORY.md"
+  printf -- '- [T1](t1.md) — x\n- [Up](../a.md) — y\n' >"$d/topic/MEMORY.md"
+  memfile "$d/feat/f.md" f
+  memfile "$d/feat/deep/stray.md" stray
+  memfile "$d/topic/t1.md" t1
+  out=$("$HOOKS/memory-lint.sh" "$d")
+  check "lint: subfolder file listed in root index not reported" bash -c '! grep -q "feat/f.md" <<<"$1"' _ "$out"
+  check "lint: file listed in a nested index not reported" bash -c '! grep -q "t1.md" <<<"$1"' _ "$out"
+  check "lint: unlisted subfolder file reported" grep -q 'lint/feat/deep/stray.md: not reachable' <<<"$out"
+  check "lint: dangling subfolder link reported" grep -q 'points at missing feat/lost.md' <<<"$out"
+}
+
+test_folder_name() {
+  local repo wt
+  repo=$(new_repo "named-checkout")
+  git -C "$repo" remote add origin git@github.com:org/the-repo.git
+  check "folder: origin remote names it" test "$("$HOOKS/memory-folder.sh" "$repo")" = the-repo
+  wt="$TMP/wt-feature" && git -C "$repo" worktree add -q "$wt" -b feat
+  check "folder: worktree shares the repo's folder" test "$("$HOOKS/memory-folder.sh" "$wt")" = the-repo
+  repo=$(new_repo "no-remote")
+  git -C "$repo" worktree add -q "$TMP/wt-other" -b feat
+  check "folder: no remote uses the main checkout's name" test "$("$HOOKS/memory-folder.sh" "$TMP/wt-other")" = no-remote
+  mkdir -p "$TMP/plain dir"
+  check "folder: non-git dir uses its own name" test "$("$HOOKS/memory-folder.sh" "$TMP/plain dir")" = plain-dir
 }
 
 test_link_hook() {
-  local out
-  mkdir -p "$V/claude-memory/existing" "$P/${PRE}moved/memory" "$P/${PRE}existing/memory" "$P/${PRE}fresh" "$P/${PRE}nomem"
-  echo a >"$P/${PRE}moved/memory/MEMORY.md"
-  echo new >"$P/${PRE}existing/memory/new.md"
-  echo old >"$V/claude-memory/existing/MEMORY.md"
-  out=$(run_link "$(jq -nc --arg t "$P/${PRE}fresh/s.jsonl" '{source:"startup",transcript_path:$t}')")
-  check "link: moved dir is a symlink" test -L "$P/${PRE}moved/memory"
-  check "link: moved content in vault" test -f "$V/claude-memory/moved/MEMORY.md"
-  check "link: merge keeps vault file" grep -q old "$V/claude-memory/existing/MEMORY.md"
-  check "link: merge adds new file" test -f "$V/claude-memory/existing/new.md"
-  check "link: current project starts in vault" test -L "$P/${PRE}fresh/memory"
-  check "link: project without memory untouched" test ! -e "$P/${PRE}nomem/memory"
+  local out repo wt
+  repo=$(cd "$(new_repo "lumino-checkout")" && pwd -P) # git reports resolved paths (/var -> /private/var)
+  git -C "$repo" remote add origin https://github.com/org/svc.git
+  wt="$TMP/wt-a" && git -C "$repo" worktree add -q "$wt" -b a
+  pd() { printf '%s/%s' "$P" "$(printf '%s' "$1" | tr -c 'A-Za-z0-9' '-')"; }
+  mkdir -p "$V/claude-memory" "$(pd "$wt")/memory" "$P/untouched/memory"
+  echo new >"$(pd "$wt")/memory/new.md"
+  echo old >"$P/untouched/memory/keep.md"
+  out=$(run_link "$(jq -nc --arg t "$(pd "$wt")/s.jsonl" --arg c "$wt" '{source:"startup",transcript_path:$t,cwd:$c}')")
+  check "link: worktree memory moved into the repo folder" test -f "$V/claude-memory/svc/new.md"
+  check "link: worktree project dir links the repo folder" test -f "$(pd "$wt")/memory/new.md"
+  check "link: main checkout's project dir links it too" test -f "$(pd "$repo")/memory/new.md"
+  check "link: no folder named after the worktree" test ! -e "$V/claude-memory/wt-a"
+  check "link: other projects untouched" test ! -L "$P/untouched/memory"
+  git -C "$repo" remote set-url origin https://github.com/org/renamed.git
+  run_link "$(jq -nc --arg t "$(pd "$repo")/s.jsonl" --arg c "$repo" '{transcript_path:$t,cwd:$c}')" >/dev/null
+  check "link: stale symlink re-pointed" test "$(readlink "$(pd "$repo")/memory")" = "$V/claude-memory/renamed"
   check "link: index note generated" test -f "$V/claude-memory/Claude Memory.md"
   check "link: output carries global index" jqe '.hookSpecificOutput.additionalContext | test("Global memory")' <<<"$out"
   out=$(run_link '{"source":"compact"}')
@@ -121,6 +150,7 @@ test_recall() {
 }
 
 test_lint
+test_folder_name
 test_recall
 test_link_hook
 test_vault_commit

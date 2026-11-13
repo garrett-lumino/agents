@@ -11,20 +11,21 @@ lint_dir() {
   root=$(cd "$1" && pwd -P) label=$(basename -- "$1")
   [ -f "$root/MEMORY.md" ] || { [ -n "$(ls -- "$root"/*.md 2>/dev/null)" ] && echo "$label: no MEMORY.md index"; return; }
   find "$root" -name '*.md' ! -path '*/.*' >"$TMPD/files"
-  # Every [[link]] target, and every index entry as a path relative to the root.
+  # Every [[link]] target, by name.
   tr '\n' '\0' <"$TMPD/files" | xargs -0 grep -hoE '\[\[[^]|#]+' 2>/dev/null | sed 's/^\[\[//; s|.*/||' | sort -u >"$TMPD/links"
   : >"$TMPD/listed"
-  grep '/MEMORY\.md$' "$TMPD/files" | while read -r index; do
-    idir=$(dirname -- "$index") rel=${idir#"$root"}
-    grep -oE '\]\([^)]+\.md\)' "$index" | sed 's/^](//; s/)$//' | while read -r ref; do
+  # Every [x](file.md) link, from an index or a hub note, resolved to an absolute path.
+  while read -r src; do
+    sdir=$(dirname -- "$src") rel=${sdir#"$root"}
+    grep -oE '\]\([^)]+\.md\)' "$src" | sed 's/^](//; s/)$//' | while read -r ref; do
       case $ref in http*) continue ;; esac
-      if [ -e "$idir/$ref" ]; then
-        printf '%s\n' "$(cd "$(dirname -- "$idir/$ref")" && pwd -P)/$(basename -- "$ref")" >>"$TMPD/listed"
-      else
+      if [ -e "$sdir/$ref" ]; then
+        printf '%s\n' "$(cd "$(dirname -- "$sdir/$ref")" && pwd -P)/$(basename -- "$ref")" >>"$TMPD/listed"
+      elif [ "$(basename -- "$src")" = MEMORY.md ]; then
         echo "$label${rel}/MEMORY.md: points at missing $ref"
       fi
     done
-  done
+  done <"$TMPD/files"
   while read -r f; do
     file=$(basename -- "$f") stem=${file%.md} at="$label${f#"$root"}"
     [ "$file" = MEMORY.md ] && continue

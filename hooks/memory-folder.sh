@@ -17,4 +17,7 @@ name=${name%/}
 name=${name##*/}
 name=${name##*:} # scp-style remote with no path separator
 name=${name%.git}
-printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '-'
+name=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '-')
+# Never a reserved or hidden name (_global, ., .., .git): those would land outside a repo folder.
+case $name in '' | .* | _*) name="repo-$name" ;; esac
+printf '%s' "$name"

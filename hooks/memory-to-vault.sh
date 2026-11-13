@@ -34,9 +34,17 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 if [ -n "$transcript" ] && [ -n "$cwd" ]; then
   target="$VAULT_MEM/$("$HOOK_DIR/memory-folder.sh" "$cwd")"
   link_project "$(dirname -- "$transcript")" "$target"
-  # A worktree's memory is read from its main checkout's project dir.
+  # A linked worktree's memory is read from its main checkout's project dir. Link it only when
+  # this really is a worktree (its git dir under <common>/worktrees/) and that dir has no link yet;
+  # never re-point another project's existing link.
   common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-  case $common in */.git) link_project "$(project_dir "${common%/.git}")" "$target" ;; esac
+  gitdir=$(git -C "$cwd" rev-parse --path-format=absolute --git-dir 2>/dev/null)
+  case $common:$gitdir in
+    */.git:*/.git/worktrees/*)
+      main=$(project_dir "${common%/.git}")
+      [ "${gitdir%/worktrees/*}" = "$common" ] && [ ! -L "$main/memory" ] && link_project "$main" "$target"
+      ;;
+  esac
 fi
 
 # Shared memory for every project: hand its index to the session as context.

@@ -36,10 +36,14 @@ test_lint() {
   memfile "$d/feat/f.md" f
   memfile "$d/feat/deep/stray.md" stray
   memfile "$d/topic/t1.md" t1
+  printf -- '---\nname: hub2\ndescription: d\nmetadata:\n  type: user\n---\nsee [old](../feat/old.md)\n' >"$d/topic/hub2.md"
+  printf -- '- [H2](hub2.md) — z\n' >>"$d/topic/MEMORY.md"
+  memfile "$d/feat/old.md" old
   out=$("$HOOKS/memory-lint.sh" "$d")
   check "lint: subfolder file listed in root index not reported" bash -c '! grep -q "feat/f.md" <<<"$1"' _ "$out"
   check "lint: file listed in a nested index not reported" bash -c '! grep -q "t1.md" <<<"$1"' _ "$out"
   check "lint: unlisted subfolder file reported" grep -q 'lint/feat/deep/stray.md: not reachable' <<<"$out"
+  check "lint: file linked from a hub note not reported" bash -c '! grep -q "feat/old.md" <<<"$1"' _ "$out"
   check "lint: dangling subfolder link reported" grep -q 'points at missing feat/lost.md' <<<"$out"
 }
 
@@ -53,6 +57,11 @@ test_folder_name() {
   repo=$(new_repo "no-remote")
   git -C "$repo" worktree add -q "$TMP/wt-other" -b feat
   check "folder: no remote uses the main checkout's name" test "$("$HOOKS/memory-folder.sh" "$TMP/wt-other")" = no-remote
+  repo=$(new_repo "reserved")
+  git -C "$repo" remote add origin https://example.com/x/_global.git
+  check "folder: reserved name prefixed" test "$("$HOOKS/memory-folder.sh" "$repo")" = repo-_global
+  git -C "$repo" remote set-url origin https://example.com/x/...git
+  check "folder: dot name prefixed" test "$("$HOOKS/memory-folder.sh" "$repo")" = repo-..
   mkdir -p "$TMP/plain dir"
   check "folder: non-git dir uses its own name" test "$("$HOOKS/memory-folder.sh" "$TMP/plain dir")" = plain-dir
 }
@@ -72,6 +81,9 @@ test_link_hook() {
   check "link: main checkout's project dir links it too" test -f "$(pd "$repo")/memory/new.md"
   check "link: no folder named after the worktree" test ! -e "$V/claude-memory/wt-a"
   check "link: other projects untouched" test ! -L "$P/untouched/memory"
+  rm "$(pd "$repo")/memory" && ln -s "$V/claude-memory/elsewhere" "$(pd "$repo")/memory"
+  run_link "$(jq -nc --arg t "$(pd "$wt")/s.jsonl" --arg c "$wt" '{transcript_path:$t,cwd:$c}')" >/dev/null
+  check "link: worktree session leaves the main checkout's existing link alone" test "$(readlink "$(pd "$repo")/memory")" = "$V/claude-memory/elsewhere"
   git -C "$repo" remote set-url origin https://github.com/org/renamed.git
   run_link "$(jq -nc --arg t "$(pd "$repo")/s.jsonl" --arg c "$repo" '{transcript_path:$t,cwd:$c}')" >/dev/null
   check "link: stale symlink re-pointed" test "$(readlink "$(pd "$repo")/memory")" = "$V/claude-memory/renamed"

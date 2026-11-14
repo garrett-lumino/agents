@@ -62,3 +62,8 @@ These rules apply to every project. A project's own `AGENTS.md` adds its layer m
 - Rust: `thiserror` in libraries, `anyhow` in binaries; no `unwrap`/`expect` in library code; `cargo fmt` and `cargo clippy -- -D warnings` clean.
 - Terraform: one module, one responsibility; no provider blocks in child modules.
 - PostgreSQL: migrations are reviewed; in production, fix forward (keep `down()` if the project requires it). Every hot-path query has an index plan.
+
+## How to write to me
+- Every reply, commit message, PR description, and doc follows the unslop rules below. Code and quoted output are exempt.
+
+@~/agents/skills/unslop/SKILL.md
